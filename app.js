@@ -1,13 +1,10 @@
-/* Finny — Telegram WebApp mini app
-   Works standalone in browser too. Data stored in localStorage. */
-
 const TG = window.Telegram?.WebApp;
 
-const $ = (s) => document.querySelector(s);
+const $  = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-const storeKey = "finny.v1.data";
-const settingsKey = "finny.v1.settings";
+const storeKey    = "finny.v2.data";
+const settingsKey = "finny.v2.settings";
 
 const state = {
   filter: "all",
@@ -15,21 +12,13 @@ const state = {
   type: "expense",
   editingId: null,
   items: [],
-  settings: {
-    theme: "dark",
-    dateFormat: "ru",
-  }
+  settings: { theme: "dark", dateFormat: "ru" },
+  modal: "none", // none | add | settings
 };
 
-const currencyMap = {
-  RUB: "₽",
-  EUR: "€",
-  USD: "$"
-};
+const currencyMap = { RUB:"₽", EUR:"€", USD:"$" };
 
-function uid(){
-  return Math.random().toString(16).slice(2) + Date.now().toString(16);
-}
+function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
 
 function todayISO(){
   const d = new Date();
@@ -46,6 +35,18 @@ function formatDate(iso){
   return `${d}.${m}.${y}`;
 }
 
+function escapeHTML(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;");
+}
+
+function save(){ localStorage.setItem(storeKey, JSON.stringify(state.items)); }
+function saveSettings(){ localStorage.setItem(settingsKey, JSON.stringify(state.settings)); }
+
 function load(){
   try{
     const raw = localStorage.getItem(storeKey);
@@ -60,18 +61,9 @@ function load(){
   applyTheme();
 }
 
-function save(){
-  localStorage.setItem(storeKey, JSON.stringify(state.items));
-}
-
-function saveSettings(){
-  localStorage.setItem(settingsKey, JSON.stringify(state.settings));
-}
-
 function applyTheme(){
   document.body.classList.toggle("light", state.settings.theme === "light");
 
-  // Telegram theme sync
   if (TG){
     TG.setHeaderColor?.(state.settings.theme === "light" ? "#f7f8ff" : "#070a12");
     TG.setBackgroundColor?.(state.settings.theme === "light" ? "#f7f8ff" : "#070a12");
@@ -82,7 +74,6 @@ function money(n, cur){
   const sym = currencyMap[cur] ?? cur;
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-
   const s = abs.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return `${sign}${s} ${sym}`;
 }
@@ -105,6 +96,59 @@ function matchFilter(it){
     if(!hay.includes(q)) return false;
   }
   return true;
+}
+
+/* ===== MODAL MANAGER (главный фикс) ===== */
+function lockScroll(){ document.body.style.overflow = "hidden"; }
+function unlockScroll(){ document.body.style.overflow = ""; }
+
+function hideAllModals(){
+  $("#overlayAdd").hidden = true;
+  $("#overlaySettings").hidden = true;
+  state.modal = "none";
+
+  // Telegram MainButton
+  if (TG){
+    TG.MainButton.offClick(onSave);
+    TG.MainButton.hide();
+  }
+
+  unlockScroll();
+}
+
+function openModal(kind){
+  // железно: сначала скрываем всё
+  hideAllModals();
+
+  if(kind === "add"){
+    $("#overlayAdd").hidden = false;
+    state.modal = "add";
+    lockScroll();
+
+    if (TG){
+      TG.MainButton.setText(state.editingId ? "Сохранить изменения" : "Сохранить");
+      TG.MainButton.show();
+      TG.MainButton.offClick(onSave);
+      TG.MainButton.onClick(onSave);
+    }
+    return;
+  }
+
+  if(kind === "settings"){
+    $("#overlaySettings").hidden = false;
+    state.modal = "settings";
+    lockScroll();
+    return;
+  }
+}
+
+function closeModal(){
+  hideAllModals();
+}
+
+/* ===== UI fill ===== */
+function setTypeUI(type){
+  $$(".type-btn[data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === type));
 }
 
 function render(){
@@ -150,54 +194,29 @@ function render(){
         </div>
       </div>
     `;
-
     root.appendChild(el);
   }
 
-  // Telegram hints
-  if (TG){
-    $("#tgHint").style.display = "none";
+  $("#tgHint").style.display = TG ? "none" : "block";
+}
+
+/* ===== Actions ===== */
+function toast(text){
+  if (TG?.showPopup){
+    TG.showPopup({ title: "Finny", message: text, buttons: [{type:"ok"}] });
   } else {
-    $("#tgHint").style.display = "block";
+    alert(text);
   }
 }
 
-function escapeHTML(s){
-  return String(s)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
+function haptic(type){
+  TG?.HapticFeedback?.notificationOccurred?.(type);
 }
 
-/* ======= Overlay control (главный фикс) ======= */
-function isOpen(el){ return el && !el.hidden; }
-
-function closeAllOverlays(){
-  if (isOpen($("#overlay"))) closeSheet(false);
-  if (isOpen($("#settingsOverlay"))) closeSettings(false);
-  document.body.style.overflow = "";
-}
-
-function lockScroll(){
-  document.body.style.overflow = "hidden";
-}
-function unlockScroll(){
-  // если ни один оверлей не открыт — возвращаем скролл
-  const anyOpen = isOpen($("#overlay")) || isOpen($("#settingsOverlay"));
-  if (!anyOpen) document.body.style.overflow = "";
-}
-
-/* ======= Add/Edit sheet ======= */
-function openSheet(editItem = null){
-  // закрываем настройки, если открыты
-  if (isOpen($("#settingsOverlay"))) closeSettings(false);
-
+function openAdd(editItem = null){
   state.editingId = editItem?.id ?? null;
 
-  $("#overlay").hidden = false;
-  lockScroll();
+  $("#sheetTitle").textContent = editItem ? "Редактировать" : "Новая операция";
 
   const now = todayISO();
   $("#dateInput").value = editItem?.date ?? now;
@@ -209,52 +228,15 @@ function openSheet(editItem = null){
   state.type = editItem?.type ?? "expense";
   setTypeUI(state.type);
 
-  $("#sheetTitle").textContent = editItem ? "Редактировать" : "Новая операция";
-
-  if (TG){
-    TG.MainButton.setText(editItem ? "Сохранить изменения" : "Сохранить");
-    TG.MainButton.show();
-    TG.MainButton.offClick(onSave);
-    TG.MainButton.onClick(onSave);
-  }
+  openModal("add");
 }
 
-function closeSheet(fromUser = true){
-  $("#overlay").hidden = true;
-  unlockScroll();
-
-  if (TG){
-    TG.MainButton.offClick(onSave);
-    TG.MainButton.hide();
-  }
-
-  // опционально — “отмена”
-  if (fromUser) TG?.HapticFeedback?.impactOccurred?.("light");
-}
-
-function setTypeUI(type){
-  $$(".type-btn[data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === type));
-}
-
-/* ======= Settings sheet ======= */
 function openSettings(){
-  // закрываем форму, если открыта
-  if (isOpen($("#overlay"))) closeSheet(false);
-
-  $("#settingsOverlay").hidden = false;
-  lockScroll();
-
+  // подставим актуальные значения
   $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
   $("#dateFormatSelect").value = state.settings.dateFormat;
 
-  TG?.HapticFeedback?.impactOccurred?.("light");
-}
-
-function closeSettings(fromUser = true){
-  $("#settingsOverlay").hidden = true;
-  unlockScroll();
-
-  if (fromUser) TG?.HapticFeedback?.impactOccurred?.("light");
+  openModal("settings");
 }
 
 function onSave(){
@@ -287,7 +269,7 @@ function onSave(){
 
   save();
   render();
-  closeSheet(false);
+  closeModal();
   haptic("success");
 }
 
@@ -298,19 +280,6 @@ function removeItem(id){
   haptic("warning");
 }
 
-function toast(text){
-  if (TG?.showPopup){
-    TG.showPopup({ title: "Finny", message: text, buttons: [{type:"ok"}] });
-  } else {
-    alert(text);
-  }
-}
-
-function haptic(type){
-  TG?.HapticFeedback?.notificationOccurred?.(type);
-}
-
-/* Export / Import */
 function exportJSON(){
   const blob = new Blob([JSON.stringify({ items: state.items, settings: state.settings }, null, 2)], { type: "application/json" });
   const url = URL.createObjectURL(blob);
@@ -330,6 +299,7 @@ function importJSON(file){
       const data = JSON.parse(String(reader.result || "{}"));
       if(Array.isArray(data.items)) state.items = data.items;
       if(data.settings) state.settings = { ...state.settings, ...data.settings };
+
       save();
       saveSettings();
       applyTheme();
@@ -342,22 +312,35 @@ function importJSON(file){
   reader.readAsText(file);
 }
 
-/* Events */
+/* ===== Events ===== */
 function bind(){
-  $("#btnAdd").addEventListener("click", () => openSheet(null));
-  $("#btnClose").addEventListener("click", () => closeSheet(true));
-  $("#btnCancel").addEventListener("click", () => closeSheet(true));
+  $("#btnAdd").addEventListener("click", () => openAdd(null));
+  $("#btnSettings").addEventListener("click", openSettings);
+
+  // закрытие add
+  $("#btnCloseAdd").addEventListener("click", closeModal);
+  $("#btnCancelAdd").addEventListener("click", closeModal);
   $("#btnSave").addEventListener("click", onSave);
 
-  // закрытие по тапу на фон
-  $("#overlay").addEventListener("click", (e) => {
-    if(e.target === $("#overlay")) closeSheet(true);
-  });
-  $("#settingsOverlay").addEventListener("click", (e) => {
-    if(e.target === $("#settingsOverlay")) closeSettings(true);
+  // закрытие settings
+  $("#btnCloseSettings").addEventListener("click", closeModal);
+  $("#btnSettingsDone").addEventListener("click", () => {
+    closeModal();
+    saveSettings();
+    applyTheme();
+    render();
+    haptic("success");
   });
 
-  // type buttons
+  // клик по фону
+  $("#overlayAdd").addEventListener("click", (e) => {
+    if(e.target === $("#overlayAdd")) closeModal();
+  });
+  $("#overlaySettings").addEventListener("click", (e) => {
+    if(e.target === $("#overlaySettings")) closeModal();
+  });
+
+  // переключатель типа
   $$(".type-btn[data-type]").forEach(btn => {
     btn.addEventListener("click", () => {
       state.type = btn.dataset.type;
@@ -366,7 +349,7 @@ function bind(){
     });
   });
 
-  // filter segmented
+  // фильтр
   $$(".seg-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       $$(".seg-btn").forEach(b => b.classList.remove("active"));
@@ -377,33 +360,33 @@ function bind(){
     });
   });
 
+  // поиск
   $("#searchInput").addEventListener("input", (e) => {
     state.q = e.target.value.trim();
     render();
   });
 
+  // edit/delete
   $("#items").addEventListener("click", (e) => {
     const editId = e.target?.dataset?.edit;
-    const delId = e.target?.dataset?.del;
+    const delId  = e.target?.dataset?.del;
 
     if(editId){
       const it = state.items.find(i => i.id === editId);
-      if(it) openSheet(it);
+      if(it) openAdd(it);
     }
     if(delId){
-      if(confirm("Удалить операцию?")){
-        removeItem(delId);
-      }
+      if(confirm("Удалить операцию?")) removeItem(delId);
     }
   });
 
+  // export/import/clear
   $("#btnExport").addEventListener("click", exportJSON);
   $("#importFile").addEventListener("change", (e) => {
     const f = e.target.files?.[0];
     if(f) importJSON(f);
     e.target.value = "";
   });
-
   $("#btnClear").addEventListener("click", () => {
     if(confirm("Точно очистить все данные?")){
       state.items = [];
@@ -413,17 +396,7 @@ function bind(){
     }
   });
 
-  // settings
-  $("#btnSettings").addEventListener("click", openSettings);
-  $("#btnSettingsClose").addEventListener("click", () => closeSettings(true));
-  $("#btnSettingsDone").addEventListener("click", () => {
-    closeSettings(false);
-    saveSettings();
-    applyTheme();
-    render();
-    haptic("success");
-  });
-
+  // тема
   $$(".type-btn[data-theme]").forEach(btn => {
     btn.addEventListener("click", () => {
       state.settings.theme = btn.dataset.theme;
@@ -442,31 +415,27 @@ function bind(){
 
   // ESC (в браузере)
   document.addEventListener("keydown", (e) => {
-    if(e.key === "Escape"){
-      closeAllOverlays();
-    }
+    if(e.key === "Escape") closeModal();
   });
 }
 
-/* Telegram init */
+/* ===== Telegram init ===== */
 function initTelegram(){
   if(!TG) return;
 
   TG.ready();
   TG.expand();
 
-  const cs = TG.colorScheme; // "dark" | "light"
   const saved = localStorage.getItem(settingsKey);
   if(!saved){
-    state.settings.theme = cs === "light" ? "light" : "dark";
+    state.settings.theme = TG.colorScheme === "light" ? "light" : "dark";
     saveSettings();
   }
 
   TG.enableClosingConfirmation?.();
 
   TG.onEvent?.("themeChanged", () => {
-    const s = TG.colorScheme;
-    state.settings.theme = s === "light" ? "light" : "dark";
+    state.settings.theme = TG.colorScheme === "light" ? "light" : "dark";
     saveSettings();
     applyTheme();
     render();
