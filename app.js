@@ -3,13 +3,18 @@ const TG = window.Telegram?.WebApp;
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-function on(id, ev, fn){
-  const el = $(id);
-  if(el) el.addEventListener(ev, fn);
+/** Надёжный “тап” для Telegram WebView (Android):
+ *  - pointerup (лучше всего)
+ *  - click (fallback)
+ */
+function onTap(el, fn){
+  if(!el) return;
+  el.addEventListener("pointerup", (e) => { fn(e); }, { passive: true });
+  el.addEventListener("click", (e) => { fn(e); }, { passive: true });
 }
 
-const storeKey    = "finny.v3.data";
-const settingsKey = "finny.v3.settings";
+const storeKey    = "finny.v4.data";
+const settingsKey = "finny.v4.settings";
 
 const state = {
   filter: "all",
@@ -153,11 +158,9 @@ function closeModal(){
 function setTypeUI(type){
   $$(".type-btn[data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === type));
 }
-
 function setThemeUI(){
   $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
 }
-
 function setDateFmtUI(){
   $$(".type-btn[data-datefmt]").forEach(b => b.classList.toggle("active", b.dataset.datefmt === state.settings.dateFormat));
 }
@@ -165,6 +168,7 @@ function setDateFmtUI(){
 /* ===== Render ===== */
 function render(){
   const { income, expense, balance } = compute();
+
   $("#incomeValue").textContent = money(income, "RUB");
   $("#expenseValue").textContent = money(expense, "RUB");
   $("#balanceValue").textContent = money(balance, "RUB");
@@ -323,38 +327,44 @@ function importJSON(file){
 
 /* ===== Events ===== */
 function bind(){
-  on("#btnAdd", "click", () => openAdd(null));
-  on("#btnSettings", "click", openSettings);
+  // Главные кнопки
+  onTap($("#btnAdd"), () => openAdd(null));
+  onTap($("#btnSettings"), () => openSettings());
 
-  on("#btnCloseAdd", "click", closeModal);
-  on("#btnCancelAdd", "click", closeModal);
-  on("#btnSave", "click", onSave);
+  // Закрыть/отмена/сохранить в add
+  onTap($("#btnCloseAdd"), closeModal);
+  onTap($("#btnCancelAdd"), closeModal);
+  onTap($("#btnSave"), onSave);
 
-  on("#btnCloseSettings", "click", closeModal);
-  on("#btnSettingsDone", "click", () => {
-    closeModal();
+  // Закрыть/готово в settings (ВОТ ТУТ ФИКС)
+  onTap($("#btnCloseSettings"), closeModal);
+  onTap($("#btnSettingsDone"), () => {
+    // сохраняем и выходим
     saveSettings();
     applyTheme();
     render();
+    closeModal();
     haptic("success");
   });
 
-  // клики по фону
-  on("#overlayAdd", "click", (e) => { if(e.target === $("#overlayAdd")) closeModal(); });
-  on("#overlaySettings", "click", (e) => { if(e.target === $("#overlaySettings")) closeModal(); });
+  // Закрытие по тапу на фон
+  const ovAdd = $("#overlayAdd");
+  const ovSet = $("#overlaySettings");
+  if(ovAdd) ovAdd.addEventListener("pointerup", (e) => { if(e.target === ovAdd) closeModal(); }, {passive:true});
+  if(ovSet) ovSet.addEventListener("pointerup", (e) => { if(e.target === ovSet) closeModal(); }, {passive:true});
 
-  // тип (доход/расход)
+  // Тип (доход/расход)
   $$(".type-btn[data-type]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    onTap(btn, () => {
       state.type = btn.dataset.type;
       setTypeUI(state.type);
       haptic("success");
     });
   });
 
-  // тема (dark/light)
+  // Тема (dark/light)
   $$(".type-btn[data-theme]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    onTap(btn, () => {
       state.settings.theme = btn.dataset.theme;
       setThemeUI();
       applyTheme();
@@ -363,9 +373,9 @@ function bind(){
     });
   });
 
-  // формат даты (ru/iso) — КНОПКИ вместо select
+  // Формат даты (кнопки)
   $$(".type-btn[data-datefmt]").forEach(btn => {
-    btn.addEventListener("click", () => {
+    onTap(btn, () => {
       state.settings.dateFormat = btn.dataset.datefmt;
       setDateFmtUI();
       saveSettings();
@@ -374,9 +384,9 @@ function bind(){
     });
   });
 
-  // фильтр
+  // Фильтр
   $$(".seg-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
+    onTap(btn, () => {
       $$(".seg-btn").forEach(b => b.classList.remove("active"));
       btn.classList.add("active");
       state.filter = btn.dataset.filter;
@@ -385,34 +395,45 @@ function bind(){
     });
   });
 
-  // поиск
-  on("#searchInput", "input", (e) => {
-    state.q = e.target.value.trim();
-    render();
-  });
+  // Поиск
+  const search = $("#searchInput");
+  if(search){
+    search.addEventListener("input", (e) => {
+      state.q = e.target.value.trim();
+      render();
+    });
+  }
 
-  // edit/delete
-  on("#items", "click", (e) => {
-    const editId = e.target?.dataset?.edit;
-    const delId  = e.target?.dataset?.del;
+  // Edit/Delete
+  const items = $("#items");
+  if(items){
+    items.addEventListener("click", (e) => {
+      const editId = e.target?.dataset?.edit;
+      const delId  = e.target?.dataset?.del;
 
-    if(editId){
-      const it = state.items.find(i => i.id === editId);
-      if(it) openAdd(it);
-    }
-    if(delId){
-      if(confirm("Удалить операцию?")) removeItem(delId);
-    }
-  });
+      if(editId){
+        const it = state.items.find(i => i.id === editId);
+        if(it) openAdd(it);
+      }
+      if(delId){
+        if(confirm("Удалить операцию?")) removeItem(delId);
+      }
+    });
+  }
 
-  on("#btnExport", "click", exportJSON);
-  on("#importFile", "change", (e) => {
-    const f = e.target.files?.[0];
-    if(f) importJSON(f);
-    e.target.value = "";
-  });
+  // Export/Import/Clear
+  onTap($("#btnExport"), exportJSON);
 
-  on("#btnClear", "click", () => {
+  const imp = $("#importFile");
+  if(imp){
+    imp.addEventListener("change", (e) => {
+      const f = e.target.files?.[0];
+      if(f) importJSON(f);
+      e.target.value = "";
+    });
+  }
+
+  onTap($("#btnClear"), () => {
     if(confirm("Точно очистить все данные?")){
       state.items = [];
       save();
@@ -421,6 +442,7 @@ function bind(){
     }
   });
 
+  // ESC (браузер)
   document.addEventListener("keydown", (e) => {
     if(e.key === "Escape") closeModal();
   });
@@ -448,7 +470,12 @@ function initTelegram(){
 }
 
 /* Boot */
-load();
-bind();
-initTelegram();
-render();
+try{
+  load();
+  bind();
+  initTelegram();
+  render();
+}catch(err){
+  console.error("Finny boot error:", err);
+  alert("Ошибка в приложении. Открой консоль/перезагрузи страницу.");
+}
