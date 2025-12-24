@@ -176,12 +176,13 @@
             </div>
           </label>
 
+          <!-- ВАЖНО: вместо <select> — кнопки (так надёжнее в Telegram) -->
           <label class="field">
             <span>Формат даты</span>
-            <select id="dateFormatSelect">
-              <option value="ru">ДД.ММ.ГГГГ</option>
-              <option value="iso">ГГГГ-ММ-ДД</option>
-            </select>
+            <div class="type-toggle">
+              <button class="type-btn active" data-datefmt="ru">ДД.ММ.ГГГГ</button>
+              <button class="type-btn" data-datefmt="iso">ГГГГ-ММ-ДД</button>
+            </div>
           </label>
 
           <div class="row end">
