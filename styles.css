@@ -35,10 +35,7 @@ body{
 
 .app{ max-width:520px; margin:0 auto; padding:16px 14px 28px; }
 
-.topbar{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:12px; padding:10px 6px 16px;
-}
+.topbar{ display:flex; align-items:center; justify-content:space-between; gap:12px; padding:10px 6px 16px; }
 .brand{ display:flex; align-items:center; gap:12px; }
 .logo{
   width:44px; height:44px; display:grid; place-items:center;
@@ -56,11 +53,9 @@ body{
   border-radius:14px;
   border:1px solid var(--stroke);
   background: rgba(255,255,255,.06);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  box-shadow: 0 10px 30px rgba(0,0,0,.28);
   color: var(--text);
   cursor:pointer;
+  box-shadow: 0 10px 30px rgba(0,0,0,.28);
 }
 .icon{ width:20px; height:20px; fill: currentColor; opacity:.9; }
 
@@ -71,10 +66,9 @@ body{
   border-radius: var(--r);
   background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
   border: 1px solid var(--stroke);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
   box-shadow: var(--shadow);
 }
+
 .balance-row{ display:flex; align-items:baseline; justify-content:space-between; }
 .balance-row .k{ color:var(--muted); font-size:12px; }
 .balance-row .v{ font-size:28px; font-weight:900; }
@@ -103,8 +97,6 @@ body{
   cursor:pointer;
   background: rgba(255,255,255,.06);
   color: var(--text);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 .primary{
   flex:1;
@@ -145,10 +137,7 @@ body{
 .search input::placeholder{ color: rgba(255,255,255,.45); }
 
 .list{ margin-top:16px; }
-.list-head{
-  display:flex; align-items:center; justify-content:space-between;
-  gap:10px; padding:0 4px 8px;
-}
+.list-head{ display:flex; align-items:center; justify-content:space-between; gap:10px; padding:0 4px 8px; }
 .list-head .title{ font-weight:900; }
 .actions{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
 
@@ -159,8 +148,6 @@ body{
   border-radius:18px;
   border: 1px solid var(--stroke);
   background: rgba(255,255,255,.05);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
 }
 .left{ display:flex; gap:10px; align-items:center; min-width:0; }
 .badge{
@@ -223,20 +210,22 @@ body{
   padding:18px 14px;
   z-index: 999;
 }
+
+/* Blur включаем только если поддерживается (и часто стабильнее) */
+@supports ((backdrop-filter: blur(10px)) or (-webkit-backdrop-filter: blur(10px))) {
+  .overlay{ backdrop-filter: blur(2px); -webkit-backdrop-filter: blur(2px); }
+  .sheet{ backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); }
+}
+
 .sheet{
   width: min(520px, 100%);
   border-radius: 26px;
   border: 1px solid rgba(255,255,255,.12);
   background: linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
   box-shadow: var(--shadow);
   padding: 12px 12px 14px;
 }
-.sheet-top{
-  display:flex; align-items:center; justify-content:space-between;
-  padding:6px 4px 10px;
-}
+.sheet-top{ display:flex; align-items:center; justify-content:space-between; padding:6px 4px 10px; }
 .sheet-title{ font-weight:900; }
 
 .form{ display:flex; flex-direction:column; gap:10px; padding:2px 4px; }
@@ -255,6 +244,7 @@ body{
   color: var(--text);
   outline:none;
 }
+
 .type-toggle{
   display:flex; gap:8px; padding:6px;
   border-radius:18px;
