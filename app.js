@@ -446,11 +446,8 @@ function drawChart(){
 
   const ctx = canvas.getContext("2d");
 
-  // Берём ширину контейнера, чтобы не ловить 0 от canvas (часто в WebView)
   const cssW = canvas.parentElement?.clientWidth || canvas.clientWidth || 0;
   const cssH = canvas.clientHeight || 140;
-
-  // Если лэйаут ещё не готов — пропускаем
   if(cssW < 40 || cssH < 40) return;
 
   const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
@@ -458,7 +455,6 @@ function drawChart(){
   canvas.width = Math.floor(cssW * dpr);
   canvas.height = Math.floor(cssH * dpr);
 
-  // КЛЮЧ: сброс трансформации, чтобы scale не накапливался
   ctx.setTransform(1,0,0,1,0,0);
   ctx.scale(dpr, dpr);
 
@@ -497,7 +493,6 @@ function drawChart(){
 
   ctx.clearRect(0,0,W,H);
 
-  // grid
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = 1;
   ctx.strokeStyle = "rgba(255,255,255,0.16)";
@@ -514,7 +509,6 @@ function drawChart(){
     ctx.strokeStyle = rgba;
     ctx.lineWidth = 2;
 
-    // если одна точка — рисуем одну точку
     if(arr.length <= 1){
       const v = arr[0] || 0;
       const x = W;
@@ -554,7 +548,6 @@ function drawChart(){
 function renderAll(){
   renderStats();
   renderList();
-  // двойной кадр — чтобы дождаться layout в Telegram WebView
   requestAnimationFrame(() => requestAnimationFrame(drawChart));
 }
 
@@ -604,7 +597,6 @@ function bind(){
   $("#search").addEventListener("input", (e) => {
     state.search = e.target.value;
     renderList();
-    // график не обязательно перерисовывать на каждый ввод
   });
 
   $("#btnClear").addEventListener("click", clearAll);
@@ -620,7 +612,6 @@ function bind(){
   $("#btnTheme").addEventListener("click", () => {
     document.documentElement.classList.toggle("light");
     haptic("impact","light");
-    // перерисуем график после смены темы
     requestAnimationFrame(() => requestAnimationFrame(drawChart));
   });
 
