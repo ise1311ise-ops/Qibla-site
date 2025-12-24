@@ -1,481 +1,653 @@
-const TG = window.Telegram?.WebApp;
+/* Glass Budget — Telegram Mini App
+   - localStorage persistence
+   - Telegram WebApp theme + haptics (if available)
+   - filters/search/chips
+   - export/import JSON
+   - tiny canvas chart (income/expense/balance)
+*/
 
-const $  = (s) => document.querySelector(s);
-const $$ = (s) => Array.from(document.querySelectorAll(s));
+const $ = (sel, root=document) => root.querySelector(sel);
+const $$ = (sel, root=document) => Array.from(root.querySelectorAll(sel));
 
-/** Надёжный “тап” для Telegram WebView (Android):
- *  - pointerup (лучше всего)
- *  - click (fallback)
- */
-function onTap(el, fn){
-  if(!el) return;
-  el.addEventListener("pointerup", (e) => { fn(e); }, { passive: true });
-  el.addEventListener("click", (e) => { fn(e); }, { passive: true });
-}
+const STORAGE_KEY = "glass_budget_v1";
 
-const storeKey    = "finny.v4.data";
-const settingsKey = "finny.v4.settings";
-
-const state = {
-  filter: "all",
-  q: "",
-  type: "expense",
-  editingId: null,
-  items: [],
-  settings: { theme: "dark", dateFormat: "ru" },
-  modal: "none" // none | add | settings
+const CATEGORIES = {
+  expense: [
+    { key:"food", name:"Еда", emoji:"🍜" },
+    { key:"coffee", name:"Кофе", emoji:"☕" },
+    { key:"transport", name:"Транспорт", emoji:"🚇" },
+    { key:"home", name:"Дом", emoji:"🏠" },
+    { key:"health", name:"Здоровье", emoji:"🩺" },
+    { key:"fun", name:"Развлечения", emoji:"🎮" },
+    { key:"shopping", name:"Покупки", emoji:"🛍️" },
+    { key:"subscriptions", name:"Подписки", emoji:"💳" },
+    { key:"other", name:"Другое", emoji:"⋯" }
+  ],
+  income: [
+    { key:"salary", name:"Зарплата", emoji:"💼" },
+    { key:"freelance", name:"Фриланс", emoji:"🧩" },
+    { key:"gift", name:"Подарок", emoji:"🎁" },
+    { key:"refund", name:"Возврат", emoji:"↩️" },
+    { key:"other", name:"Другое", emoji:"⋯" }
+  ]
 };
 
-const currencyMap = { RUB:"₽", EUR:"€", USD:"$" };
+const state = {
+  type: "expense",
+  range: 7, // 7 | 30 | "all"
+  filterType: "all",
+  chip: "all",
+  search: "",
+  items: []
+};
 
-function uid(){ return Math.random().toString(16).slice(2) + Date.now().toString(16); }
+const tg = window.Telegram?.WebApp;
+
+function haptic(type="impact", style="light"){
+  try{
+    if(!tg?.HapticFeedback) return;
+    if(type === "impact") tg.HapticFeedback.impactOccurred(style);
+    if(type === "notify") tg.HapticFeedback.notificationOccurred(style);
+    if(type === "select") tg.HapticFeedback.selectionChanged();
+  }catch(_){}
+}
+
+function toast(msg){
+  const el = $("#toast");
+  el.textContent = msg;
+  el.classList.add("show");
+  setTimeout(()=> el.classList.remove("show"), 1700);
+}
+
+function uid(){
+  return Math.random().toString(16).slice(2) + Date.now().toString(16);
+}
 
 function todayISO(){
   const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth()+1).padStart(2,"0");
-  const dd = String(d.getDate()).padStart(2,"0");
-  return `${yyyy}-${mm}-${dd}`;
+  const tz = d.getTimezoneOffset()*60000;
+  return new Date(d - tz).toISOString().slice(0,10);
 }
 
-function formatDate(iso){
-  if(!iso) return "";
-  if(state.settings.dateFormat === "iso") return iso;
-  const [y,m,d] = iso.split("-");
-  return `${d}.${m}.${y}`;
+function formatMoney(n){
+  const v = Number(n || 0);
+  // ₽ формат без копеек если целое
+  const isInt = Math.abs(v - Math.round(v)) < 1e-9;
+  const opts = isInt ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
+  return v.toLocaleString("ru-RU", opts) + " ₽";
 }
 
-function escapeHTML(s){
-  return String(s)
-    .replaceAll("&","&amp;")
-    .replaceAll("<","&lt;")
-    .replaceAll(">","&gt;")
-    .replaceAll('"',"&quot;")
-    .replaceAll("'","&#039;");
+function parseMoney(str){
+  const v = Number(str);
+  return Number.isFinite(v) ? v : 0;
 }
-
-function save(){ localStorage.setItem(storeKey, JSON.stringify(state.items)); }
-function saveSettings(){ localStorage.setItem(settingsKey, JSON.stringify(state.settings)); }
 
 function load(){
   try{
-    const raw = localStorage.getItem(storeKey);
-    state.items = raw ? JSON.parse(raw) : [];
-  }catch{ state.items = []; }
-
-  try{
-    const rawS = localStorage.getItem(settingsKey);
-    if(rawS) state.settings = { ...state.settings, ...JSON.parse(rawS) };
-  }catch{}
-
-  applyTheme();
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if(!raw) return;
+    const data = JSON.parse(raw);
+    if(Array.isArray(data.items)) state.items = data.items;
+  }catch(_){}
 }
 
-function applyTheme(){
-  document.body.classList.toggle("light", state.settings.theme === "light");
+function save(){
+  localStorage.setItem(STORAGE_KEY, JSON.stringify({ items: state.items }));
+}
 
-  if (TG){
-    TG.setHeaderColor?.(state.settings.theme === "light" ? "#f7f8ff" : "#070a12");
-    TG.setBackgroundColor?.(state.settings.theme === "light" ? "#f7f8ff" : "#070a12");
+function applyTelegramTheme(){
+  if(!tg) return;
+
+  try{
+    tg.expand?.();
+    tg.setHeaderColor?.("secondary_bg_color");
+    tg.setBackgroundColor?.(tg.themeParams?.bg_color || "#0b0f1a");
+  }catch(_){}
+
+  // Light/dark hint based on Telegram theme background
+  try{
+    const bg = tg.themeParams?.bg_color;
+    if(bg){
+      const c = bg.replace("#","");
+      const r = parseInt(c.slice(0,2),16), g = parseInt(c.slice(2,4),16), b = parseInt(c.slice(4,6),16);
+      const luminance = (0.2126*r + 0.7152*g + 0.0722*b)/255;
+      document.documentElement.classList.toggle("light", luminance > 0.62);
+    }
+  }catch(_){}
+}
+
+function setType(type){
+  state.type = type;
+  $$(".toggle__btn").forEach(b => b.classList.toggle("is-active", b.dataset.type === type));
+  rebuildCategorySelect();
+}
+
+function rebuildCategorySelect(){
+  const sel = $("#category");
+  sel.innerHTML = "";
+  const list = CATEGORIES[state.type];
+  for(const c of list){
+    const opt = document.createElement("option");
+    opt.value = c.key;
+    opt.textContent = `${c.emoji} ${c.name}`;
+    sel.appendChild(opt);
   }
 }
 
-function money(n, cur){
-  const sym = currencyMap[cur] ?? cur;
-  const sign = n < 0 ? "-" : "";
-  const abs = Math.abs(n);
-  const s = abs.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
-  return `${sign}${s} ${sym}`;
+function withinRange(dateISO){
+  if(state.range === "all") return true;
+  const days = Number(state.range);
+  const d = new Date(dateISO + "T00:00:00");
+  const now = new Date();
+  const start = new Date(now);
+  start.setHours(0,0,0,0);
+  start.setDate(start.getDate() - (days - 1));
+  return d >= start && d <= now;
 }
 
-function compute(){
+function getFilteredItems(){
+  let items = [...state.items];
+
+  // range
+  items = items.filter(x => withinRange(x.date));
+
+  // filter type
+  if(state.filterType !== "all"){
+    items = items.filter(x => x.type === state.filterType);
+  }
+
+  // chip category
+  if(state.chip !== "all"){
+    items = items.filter(x => x.category === state.chip);
+  }
+
+  // search note/category
+  const q = state.search.trim().toLowerCase();
+  if(q){
+    items = items.filter(x => {
+      const catName = categoryName(x.type, x.category).toLowerCase();
+      const note = (x.note || "").toLowerCase();
+      return note.includes(q) || catName.includes(q);
+    });
+  }
+
+  // newest first
+  items.sort((a,b) => (b.date.localeCompare(a.date) || (b.createdAt - a.createdAt)));
+  return items;
+}
+
+function categoryMeta(type, key){
+  return (CATEGORIES[type] || []).find(c => c.key === key) || { name:"Другое", emoji:"⋯", key:"other" };
+}
+function categoryName(type, key){
+  return categoryMeta(type, key).name;
+}
+
+function computeTotals(items){
   let income = 0, expense = 0;
-  for(const it of state.items){
-    const amt = Number(it.amount) || 0;
-    if(it.type === "income") income += amt;
-    else expense += amt;
+  for(const x of items){
+    if(x.type === "income") income += x.amount;
+    else expense += x.amount;
   }
   return { income, expense, balance: income - expense };
 }
 
-function matchFilter(it){
-  if(state.filter !== "all" && it.type !== state.filter) return false;
-  if(state.q){
-    const q = state.q.toLowerCase();
-    const hay = `${it.category} ${it.note ?? ""}`.toLowerCase();
-    if(!hay.includes(q)) return false;
-  }
-  return true;
+function renderStats(){
+  const items = getFilteredItems();
+  const totals = computeTotals(items);
+
+  $("#incomeValue").textContent = formatMoney(totals.income);
+  $("#expenseValue").textContent = formatMoney(totals.expense);
+  $("#balanceValue").textContent = formatMoney(totals.balance);
+
+  const hint = state.range === "all" ? "за всё время" : `за последние ${state.range} дней`;
+  $("#rangeLabel").textContent = hint;
+
+  const today = new Date();
+  const dd = today.toLocaleDateString("ru-RU", { day:"2-digit", month:"long" });
+  $("#balanceHint").textContent = dd;
+
+  $("#listHint").textContent = items.length ? `${items.length} записей` : "пока пусто";
+
+  renderChips();
 }
 
-/* ===== MODAL MANAGER ===== */
-function lockScroll(){ document.body.style.overflow = "hidden"; }
-function unlockScroll(){ document.body.style.overflow = ""; }
+function renderChips(){
+  const el = $("#chips");
+  el.innerHTML = "";
 
-function hideAllModals(){
-  const a = $("#overlayAdd");
-  const s = $("#overlaySettings");
-  if(a) a.hidden = true;
-  if(s) s.hidden = true;
-  state.modal = "none";
+  const items = getFilteredItems();
 
-  if (TG){
-    TG.MainButton.offClick(onSave);
-    TG.MainButton.hide();
+  // collect categories from filtered-by-range-and-type-but-not-chip/search? We'll use range only + filterType.
+  let base = [...state.items].filter(x => withinRange(x.date));
+  if(state.filterType !== "all") base = base.filter(x => x.type === state.filterType);
+
+  const map = new Map();
+  for(const x of base){
+    map.set(x.category, (map.get(x.category) || 0) + 1);
   }
-  unlockScroll();
+
+  const chipAll = document.createElement("div");
+  chipAll.className = "chip" + (state.chip === "all" ? " is-active" : "");
+  chipAll.textContent = "Все";
+  chipAll.onclick = () => { state.chip = "all"; haptic("select"); renderAll(); };
+  el.appendChild(chipAll);
+
+  // sort by count desc
+  const entries = [...map.entries()].sort((a,b) => b[1]-a[1]).slice(0, 8);
+  for(const [catKey, count] of entries){
+    // to pick emoji, we need type guess: from any matching item
+    const any = base.find(x => x.category === catKey);
+    const meta = any ? categoryMeta(any.type, any.category) : { emoji:"◌", name: catKey };
+    const chip = document.createElement("div");
+    chip.className = "chip" + (state.chip === catKey ? " is-active" : "");
+    chip.textContent = `${meta.emoji} ${meta.name} · ${count}`;
+    chip.onclick = () => { state.chip = catKey; haptic("select"); renderAll(); };
+    el.appendChild(chip);
+  }
+
+  // if chip is active but not present now, reset
+  if(state.chip !== "all" && !map.has(state.chip)){
+    state.chip = "all";
+  }
 }
 
-function openModal(kind){
-  hideAllModals();
+function renderList(){
+  const list = $("#txList");
+  list.innerHTML = "";
 
-  if(kind === "add"){
-    $("#overlayAdd").hidden = false;
-    state.modal = "add";
-    lockScroll();
-
-    if (TG){
-      TG.MainButton.setText(state.editingId ? "Сохранить изменения" : "Сохранить");
-      TG.MainButton.show();
-      TG.MainButton.offClick(onSave);
-      TG.MainButton.onClick(onSave);
-    }
+  const items = getFilteredItems();
+  if(!items.length){
+    const empty = document.createElement("div");
+    empty.className = "muted";
+    empty.style.padding = "14px 6px";
+    empty.textContent = "Добавь первую операцию — и баланс оживёт ✨";
+    list.appendChild(empty);
     return;
   }
 
-  if(kind === "settings"){
-    $("#overlaySettings").hidden = false;
-    state.modal = "settings";
-    lockScroll();
-    return;
+  for(const x of items){
+    const meta = categoryMeta(x.type, x.category);
+
+    const row = document.createElement("div");
+    row.className = "tx";
+    row.dataset.id = x.id;
+
+    // mobile-like swipe hint: we implement long-press delete for safety
+    let pressTimer = null;
+    row.addEventListener("pointerdown", () => {
+      pressTimer = setTimeout(() => {
+        if(confirm("Удалить запись?")){
+          removeItem(x.id);
+        }
+      }, 520);
+    });
+    row.addEventListener("pointerup", () => clearTimeout(pressTimer));
+    row.addEventListener("pointercancel", () => clearTimeout(pressTimer));
+    row.addEventListener("pointerleave", () => clearTimeout(pressTimer));
+
+    const left = document.createElement("div");
+    left.className = "tx__left";
+
+    const av = document.createElement("div");
+    av.className = "avatar";
+    av.textContent = meta.emoji;
+
+    const metaBox = document.createElement("div");
+    metaBox.className = "tx__meta";
+
+    const title = document.createElement("div");
+    title.className = "tx__title";
+    title.textContent = x.note?.trim() ? x.note.trim() : meta.name;
+
+    const sub = document.createElement("div");
+    sub.className = "tx__sub";
+    sub.textContent = `${meta.name} · ${new Date(x.date+"T00:00:00").toLocaleDateString("ru-RU", { day:"2-digit", month:"short" })}`;
+
+    metaBox.appendChild(title);
+    metaBox.appendChild(sub);
+
+    left.appendChild(av);
+    left.appendChild(metaBox);
+
+    const right = document.createElement("div");
+    right.className = "tx__right";
+
+    const sum = document.createElement("div");
+    sum.className = "tx__sum " + (x.type === "income" ? "plus" : "minus");
+    const sign = x.type === "income" ? "+" : "−";
+    sum.textContent = `${sign}${formatMoney(x.amount)}`;
+
+    const tag = document.createElement("div");
+    tag.className = "tx__tag";
+    tag.textContent = x.type === "income" ? "доход" : "расход";
+
+    right.appendChild(sum);
+    right.appendChild(tag);
+
+    row.appendChild(left);
+    row.appendChild(right);
+
+    // click: quick delete (telegram style) with confirm
+    row.addEventListener("dblclick", () => {
+      if(confirm("Удалить запись?")) removeItem(x.id);
+    });
+
+    list.appendChild(row);
   }
 }
 
-function closeModal(){
-  hideAllModals();
-}
-
-function setTypeUI(type){
-  $$(".type-btn[data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === type));
-}
-function setThemeUI(){
-  $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
-}
-function setDateFmtUI(){
-  $$(".type-btn[data-datefmt]").forEach(b => b.classList.toggle("active", b.dataset.datefmt === state.settings.dateFormat));
-}
-
-/* ===== Render ===== */
-function render(){
-  const { income, expense, balance } = compute();
-
-  $("#incomeValue").textContent = money(income, "RUB");
-  $("#expenseValue").textContent = money(expense, "RUB");
-  $("#balanceValue").textContent = money(balance, "RUB");
-
-  const root = $("#items");
-  root.innerHTML = "";
-
-  const filtered = state.items
-    .slice()
-    .sort((a,b) => (b.date || "").localeCompare(a.date || "") || b.createdAt - a.createdAt)
-    .filter(matchFilter);
-
-  $("#emptyState").style.display = filtered.length ? "none" : "block";
-
-  for(const it of filtered){
-    const sign = it.type === "income" ? "+" : "−";
-    const amt = Number(it.amount) || 0;
-
-    const el = document.createElement("div");
-    el.className = "item";
-    el.innerHTML = `
-      <div class="left">
-        <div class="badge ${it.type}">${it.type === "income" ? "＋" : "−"}</div>
-        <div class="meta">
-          <div class="top">
-            <div class="cat">${escapeHTML(it.category || "Другое")}</div>
-            <div class="date">${escapeHTML(formatDate(it.date))}</div>
-          </div>
-          <div class="note">${escapeHTML(it.note || "Без заметки")}</div>
-        </div>
-      </div>
-
-      <div class="right">
-        <div class="sum ${it.type}">${sign} ${money(amt, it.currency || "RUB")}</div>
-        <div class="item-actions">
-          <button class="small" data-edit="${it.id}">Изм.</button>
-          <button class="small" data-del="${it.id}">Удал.</button>
-        </div>
-      </div>
-    `;
-    root.appendChild(el);
-  }
-
-  $("#tgHint").style.display = TG ? "none" : "block";
-}
-
-/* ===== Actions ===== */
-function toast(text){
-  if (TG?.showPopup){
-    TG.showPopup({ title: "Finny", message: text, buttons: [{type:"ok"}] });
-  } else {
-    alert(text);
-  }
-}
-
-function haptic(type){
-  TG?.HapticFeedback?.notificationOccurred?.(type);
-}
-
-function openAdd(editItem = null){
-  state.editingId = editItem?.id ?? null;
-
-  $("#sheetTitle").textContent = editItem ? "Редактировать" : "Новая операция";
-
-  const now = todayISO();
-  $("#dateInput").value = editItem?.date ?? now;
-  $("#amountInput").value = editItem?.amount ?? "";
-  $("#noteInput").value = editItem?.note ?? "";
-  $("#currencySelect").value = editItem?.currency ?? "RUB";
-  $("#categorySelect").value = editItem?.category ?? "Еда";
-
-  state.type = editItem?.type ?? "expense";
-  setTypeUI(state.type);
-
-  openModal("add");
-}
-
-function openSettings(){
-  setThemeUI();
-  setDateFmtUI();
-  openModal("settings");
-}
-
-function onSave(){
-  const amountRaw = $("#amountInput").value.replace(",", ".").trim();
-  const amount = Number(amountRaw);
-
-  if(!amountRaw || !Number.isFinite(amount) || amount <= 0){
-    toast("Введите сумму > 0");
-    return;
-  }
-
+function addItem({ type, amount, category, note, date }){
   const item = {
-    id: state.editingId ?? uid(),
-    type: state.type,
+    id: uid(),
+    type,
     amount: Math.round(amount * 100) / 100,
-    currency: $("#currencySelect").value,
-    category: $("#categorySelect").value,
-    date: $("#dateInput").value || todayISO(),
-    note: $("#noteInput").value.trim(),
-    createdAt: state.editingId
-      ? (state.items.find(i=>i.id===state.editingId)?.createdAt ?? Date.now())
-      : Date.now(),
+    category,
+    note: (note || "").trim(),
+    date,
+    createdAt: Date.now()
   };
-
-  if(state.editingId){
-    state.items = state.items.map(i => i.id === state.editingId ? item : i);
-  } else {
-    state.items.unshift(item);
-  }
-
+  state.items.push(item);
   save();
-  render();
-  closeModal();
-  haptic("success");
+  haptic("notify", "success");
+  toast("Добавлено");
+  renderAll();
 }
 
 function removeItem(id){
-  state.items = state.items.filter(i => i.id !== id);
+  const before = state.items.length;
+  state.items = state.items.filter(x => x.id !== id);
+  if(state.items.length !== before){
+    save();
+    haptic("notify", "warning");
+    toast("Удалено");
+    renderAll();
+  }
+}
+
+function clearAll(){
+  if(!state.items.length) return toast("Нечего очищать");
+  if(!confirm("Очистить все данные?")) return;
+  state.items = [];
   save();
-  render();
-  haptic("warning");
+  haptic("notify", "warning");
+  toast("Очищено");
+  renderAll();
+}
+
+function seedDemo(){
+  const base = new Date();
+  const mk = (daysAgo, type, amount, cat, note="") => {
+    const d = new Date(base);
+    d.setDate(d.getDate() - daysAgo);
+    const iso = new Date(d - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    return { id: uid(), type, amount, category: cat, note, date: iso, createdAt: Date.now()-daysAgo*3600e3 };
+  };
+
+  state.items = [
+    mk(0, "expense", 390, "coffee", "латте + круассан"),
+    mk(1, "expense", 1290, "food", "продукты"),
+    mk(2, "income", 85000, "salary", "зарплата"),
+    mk(3, "expense", 499, "subscriptions", "подписка"),
+    mk(4, "expense", 780, "transport", "такси"),
+    mk(6, "income", 12000, "freelance", "заказ"),
+    mk(8, "expense", 2400, "shopping", "подарок"),
+    mk(10,"expense", 990, "fun", "кино"),
+  ];
+  save();
+  haptic("notify", "success");
+  toast("Демо загружено");
+  renderAll();
 }
 
 function exportJSON(){
-  const blob = new Blob([JSON.stringify({ items: state.items, settings: state.settings }, null, 2)], { type: "application/json" });
+  const data = {
+    version: 1,
+    exportedAt: new Date().toISOString(),
+    items: state.items
+  };
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type:"application/json" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = "finny-backup.json";
+  a.download = "glass-budget-export.json";
   document.body.appendChild(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+  toast("Экспорт готов");
+  haptic("impact", "medium");
 }
 
-function importJSON(file){
-  const reader = new FileReader();
-  reader.onload = () => {
-    try{
-      const data = JSON.parse(String(reader.result || "{}"));
-      if(Array.isArray(data.items)) state.items = data.items;
-      if(data.settings) state.settings = { ...state.settings, ...data.settings };
+async function importJSON(file){
+  try{
+    const text = await file.text();
+    const data = JSON.parse(text);
+    if(!data?.items || !Array.isArray(data.items)) throw new Error("bad format");
+    // simple normalize
+    const items = data.items
+      .filter(x => x && (x.type==="income" || x.type==="expense"))
+      .map(x => ({
+        id: String(x.id || uid()),
+        type: x.type,
+        amount: Number(x.amount || 0),
+        category: String(x.category || "other"),
+        note: String(x.note || ""),
+        date: String(x.date || todayISO()),
+        createdAt: Number(x.createdAt || Date.now())
+      }));
+    state.items = items;
+    save();
+    toast("Импортировано");
+    haptic("notify", "success");
+    renderAll();
+  }catch(_){
+    toast("Не удалось импортировать");
+    haptic("notify", "error");
+  }
+}
 
-      save();
-      saveSettings();
-      applyTheme();
-      render();
-      toast("Импорт готов ✅");
-    }catch{
-      toast("Не получилось прочитать JSON");
-    }
+function setRange(r){
+  state.range = r;
+  $$(".seg__btn").forEach(b => b.classList.toggle("is-active", b.dataset.range === String(r)));
+  haptic("select");
+  renderAll();
+}
+
+function drawChart(){
+  const canvas = $("#miniChart");
+  const ctx = canvas.getContext("2d");
+
+  // Fit for device pixel ratio
+  const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
+  const cssW = canvas.clientWidth;
+  const cssH = canvas.clientHeight;
+  canvas.width = Math.floor(cssW * dpr);
+  canvas.height = Math.floor(cssH * dpr);
+  ctx.scale(dpr, dpr);
+
+  // Collect daily points for selected range
+  const days = state.range === "all" ? 30 : Number(state.range);
+  const now = new Date();
+  now.setHours(0,0,0,0);
+
+  // Build day list (left->right)
+  const dayList = [];
+  for(let i=days-1; i>=0; i--){
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    const iso = new Date(d - d.getTimezoneOffset()*60000).toISOString().slice(0,10);
+    dayList.push(iso);
+  }
+
+  const byDay = new Map(dayList.map(d => [d, { income:0, expense:0 }]));
+  for(const x of state.items){
+    if(!byDay.has(x.date)) continue;
+    if(x.type==="income") byDay.get(x.date).income += x.amount;
+    else byDay.get(x.date).expense += x.amount;
+  }
+
+  const incomes = dayList.map(d => byDay.get(d).income);
+  const expenses = dayList.map(d => byDay.get(d).expense);
+  const balances = incomes.map((v,i)=> v - expenses[i]);
+
+  // Normalize
+  const maxV = Math.max(1, ...incomes, ...expenses, ...balances.map(v=>Math.abs(v)));
+  const W = cssW, H = cssH;
+
+  // Clear
+  ctx.clearRect(0,0,W,H);
+
+  // Soft grid
+  ctx.globalAlpha = 0.55;
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(255,255,255,0.16)";
+  for(let i=1;i<=3;i++){
+    const y = (H/4)*i;
+    ctx.beginPath();
+    ctx.moveTo(0,y);
+    ctx.lineTo(W,y);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  // Helper line draw (no fixed colors in requirements? Here it's plain RGBA; acceptable.)
+  const line = (arr, rgba) => {
+    ctx.strokeStyle = rgba;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    arr.forEach((v,i)=>{
+      const x = (W/(arr.length-1))*i;
+      const y = H - (Math.abs(v)/maxV)*H;
+      if(i===0) ctx.moveTo(x,y);
+      else ctx.lineTo(x,y);
+    });
+    ctx.stroke();
+
+    // dots
+    ctx.fillStyle = rgba;
+    arr.forEach((v,i)=>{
+      const x = (W/(arr.length-1))*i;
+      const y = H - (Math.abs(v)/maxV)*H;
+      ctx.beginPath();
+      ctx.arc(x,y,2.2,0,Math.PI*2);
+      ctx.fill();
+    });
   };
-  reader.readAsText(file);
+
+  // Use subtle, consistent palette (matches CSS variables)
+  line(incomes, "rgba(102,242,194,0.9)");
+  line(expenses, "rgba(255,107,154,0.9)");
+  line(balances, "rgba(143,179,255,0.9)");
 }
 
-/* ===== Events ===== */
+function renderAll(){
+  renderStats();
+  renderList();
+  // chart uses all items but respects range; draw after layout
+  requestAnimationFrame(drawChart);
+}
+
 function bind(){
-  // Главные кнопки
-  onTap($("#btnAdd"), () => openAdd(null));
-  onTap($("#btnSettings"), () => openSettings());
+  // default date
+  $("#date").value = todayISO();
 
-  // Закрыть/отмена/сохранить в add
-  onTap($("#btnCloseAdd"), closeModal);
-  onTap($("#btnCancelAdd"), closeModal);
-  onTap($("#btnSave"), onSave);
-
-  // Закрыть/готово в settings (ВОТ ТУТ ФИКС)
-  onTap($("#btnCloseSettings"), closeModal);
-  onTap($("#btnSettingsDone"), () => {
-    // сохраняем и выходим
-    saveSettings();
-    applyTheme();
-    render();
-    closeModal();
-    haptic("success");
-  });
-
-  // Закрытие по тапу на фон
-  const ovAdd = $("#overlayAdd");
-  const ovSet = $("#overlaySettings");
-  if(ovAdd) ovAdd.addEventListener("pointerup", (e) => { if(e.target === ovAdd) closeModal(); }, {passive:true});
-  if(ovSet) ovSet.addEventListener("pointerup", (e) => { if(e.target === ovSet) closeModal(); }, {passive:true});
-
-  // Тип (доход/расход)
-  $$(".type-btn[data-type]").forEach(btn => {
-    onTap(btn, () => {
-      state.type = btn.dataset.type;
-      setTypeUI(state.type);
-      haptic("success");
+  // type toggle
+  $$(".toggle__btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      setType(btn.dataset.type);
+      haptic("select");
     });
   });
 
-  // Тема (dark/light)
-  $$(".type-btn[data-theme]").forEach(btn => {
-    onTap(btn, () => {
-      state.settings.theme = btn.dataset.theme;
-      setThemeUI();
-      applyTheme();
-      saveSettings();
-      haptic("success");
+  // range tabs
+  $$(".seg__btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const v = btn.dataset.range === "all" ? "all" : Number(btn.dataset.range);
+      setRange(v);
     });
   });
 
-  // Формат даты (кнопки)
-  $$(".type-btn[data-datefmt]").forEach(btn => {
-    onTap(btn, () => {
-      state.settings.dateFormat = btn.dataset.datefmt;
-      setDateFmtUI();
-      saveSettings();
-      render();
-      haptic("success");
-    });
-  });
-
-  // Фильтр
-  $$(".seg-btn").forEach(btn => {
-    onTap(btn, () => {
-      $$(".seg-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      state.filter = btn.dataset.filter;
-      render();
-      haptic("success");
-    });
-  });
-
-  // Поиск
-  const search = $("#searchInput");
-  if(search){
-    search.addEventListener("input", (e) => {
-      state.q = e.target.value.trim();
-      render();
-    });
-  }
-
-  // Edit/Delete
-  const items = $("#items");
-  if(items){
-    items.addEventListener("click", (e) => {
-      const editId = e.target?.dataset?.edit;
-      const delId  = e.target?.dataset?.del;
-
-      if(editId){
-        const it = state.items.find(i => i.id === editId);
-        if(it) openAdd(it);
-      }
-      if(delId){
-        if(confirm("Удалить операцию?")) removeItem(delId);
-      }
-    });
-  }
-
-  // Export/Import/Clear
-  onTap($("#btnExport"), exportJSON);
-
-  const imp = $("#importFile");
-  if(imp){
-    imp.addEventListener("change", (e) => {
-      const f = e.target.files?.[0];
-      if(f) importJSON(f);
-      e.target.value = "";
-    });
-  }
-
-  onTap($("#btnClear"), () => {
-    if(confirm("Точно очистить все данные?")){
-      state.items = [];
-      save();
-      render();
-      haptic("warning");
+  // form
+  $("#txForm").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const amount = parseMoney($("#amount").value);
+    if(amount <= 0){
+      toast("Сумма должна быть > 0");
+      haptic("notify","error");
+      return;
     }
+    addItem({
+      type: state.type,
+      amount,
+      category: $("#category").value,
+      note: $("#note").value,
+      date: $("#date").value || todayISO()
+    });
+    $("#amount").value = "";
+    $("#note").value = "";
+    $("#amount").focus();
   });
 
-  // ESC (браузер)
-  document.addEventListener("keydown", (e) => {
-    if(e.key === "Escape") closeModal();
+  // filters
+  $("#filterType").addEventListener("change", (e) => {
+    state.filterType = e.target.value;
+    haptic("select");
+    renderAll();
   });
-}
 
-/* ===== Telegram init ===== */
-function initTelegram(){
-  if(!TG) return;
+  $("#search").addEventListener("input", (e) => {
+    state.search = e.target.value;
+    renderList();
+  });
 
-  TG.ready();
-  TG.expand();
+  // buttons
+  $("#btnClear").addEventListener("click", clearAll);
+  $("#btnDemo").addEventListener("click", seedDemo);
 
-  const saved = localStorage.getItem(settingsKey);
-  if(!saved){
-    state.settings.theme = TG.colorScheme === "light" ? "light" : "dark";
-    saveSettings();
+  $("#btnExport").addEventListener("click", exportJSON);
+  $("#fileImport").addEventListener("change", (e) => {
+    const file = e.target.files?.[0];
+    if(file) importJSON(file);
+    e.target.value = "";
+  });
+
+  // theme button (manual)
+  $("#btnTheme").addEventListener("click", () => {
+    document.documentElement.classList.toggle("light");
+    haptic("impact","light");
+  });
+
+  // resize chart
+  window.addEventListener("resize", () => drawChart());
+
+  // Telegram main button as quick add
+  if(tg){
+    try{
+      tg.MainButton.setText("Добавить");
+      tg.MainButton.show();
+      tg.MainButton.onClick(() => {
+        $("#amount").focus();
+        haptic("select");
+      });
+    }catch(_){}
   }
-
-  TG.onEvent?.("themeChanged", () => {
-    state.settings.theme = TG.colorScheme === "light" ? "light" : "dark";
-    saveSettings();
-    applyTheme();
-    render();
-  });
 }
 
-/* Boot */
-try{
+function init(){
+  applyTelegramTheme();
+
   load();
+  rebuildCategorySelect();
   bind();
-  initTelegram();
-  render();
-}catch(err){
-  console.error("Finny boot error:", err);
-  alert("Ошибка в приложении. Открой консоль/перезагрузи страницу.");
+  renderAll();
+
+  // Telegram theme changes
+  if(tg){
+    try{
+      tg.onEvent("themeChanged", () => applyTelegramTheme());
+    }catch(_){}
+  }
 }
+
+init();
