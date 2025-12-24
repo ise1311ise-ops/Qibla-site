@@ -1,9 +1,9 @@
 /* Glass Budget — Telegram Mini App
-   - localStorage persistence
-   - Telegram WebApp theme + haptics (if available)
-   - filters/search/chips
-   - export/import JSON
-   - tiny canvas chart (income/expense/balance)
+   Fixes:
+   - canvas draw: reset transforms (no cumulative scaling)
+   - guard against 0 width/height
+   - safe rendering for 1-point arrays
+   - chart redraw after layout (double rAF)
 */
 
 const $ = (sel, root=document) => root.querySelector(sel);
@@ -71,7 +71,6 @@ function todayISO(){
 
 function formatMoney(n){
   const v = Number(n || 0);
-  // ₽ формат без копеек если целое
   const isInt = Math.abs(v - Math.round(v)) < 1e-9;
   const opts = isInt ? { maximumFractionDigits: 0 } : { minimumFractionDigits: 2, maximumFractionDigits: 2 };
   return v.toLocaleString("ru-RU", opts) + " ₽";
@@ -104,7 +103,6 @@ function applyTelegramTheme(){
     tg.setBackgroundColor?.(tg.themeParams?.bg_color || "#0b0f1a");
   }catch(_){}
 
-  // Light/dark hint based on Telegram theme background
   try{
     const bg = tg.themeParams?.bg_color;
     if(bg){
@@ -145,23 +143,26 @@ function withinRange(dateISO){
   return d >= start && d <= now;
 }
 
+function categoryMeta(type, key){
+  return (CATEGORIES[type] || []).find(c => c.key === key) || { name:"Другое", emoji:"⋯", key:"other" };
+}
+function categoryName(type, key){
+  return categoryMeta(type, key).name;
+}
+
 function getFilteredItems(){
   let items = [...state.items];
 
-  // range
   items = items.filter(x => withinRange(x.date));
 
-  // filter type
   if(state.filterType !== "all"){
     items = items.filter(x => x.type === state.filterType);
   }
 
-  // chip category
   if(state.chip !== "all"){
     items = items.filter(x => x.category === state.chip);
   }
 
-  // search note/category
   const q = state.search.trim().toLowerCase();
   if(q){
     items = items.filter(x => {
@@ -171,16 +172,8 @@ function getFilteredItems(){
     });
   }
 
-  // newest first
   items.sort((a,b) => (b.date.localeCompare(a.date) || (b.createdAt - a.createdAt)));
   return items;
-}
-
-function categoryMeta(type, key){
-  return (CATEGORIES[type] || []).find(c => c.key === key) || { name:"Другое", emoji:"⋯", key:"other" };
-}
-function categoryName(type, key){
-  return categoryMeta(type, key).name;
 }
 
 function computeTotals(items){
@@ -190,6 +183,40 @@ function computeTotals(items){
     else expense += x.amount;
   }
   return { income, expense, balance: income - expense };
+}
+
+function renderChips(){
+  const el = $("#chips");
+  el.innerHTML = "";
+
+  let base = [...state.items].filter(x => withinRange(x.date));
+  if(state.filterType !== "all") base = base.filter(x => x.type === state.filterType);
+
+  const map = new Map();
+  for(const x of base){
+    map.set(x.category, (map.get(x.category) || 0) + 1);
+  }
+
+  const chipAll = document.createElement("div");
+  chipAll.className = "chip" + (state.chip === "all" ? " is-active" : "");
+  chipAll.textContent = "Все";
+  chipAll.onclick = () => { state.chip = "all"; haptic("select"); renderAll(); };
+  el.appendChild(chipAll);
+
+  const entries = [...map.entries()].sort((a,b) => b[1]-a[1]).slice(0, 8);
+  for(const [catKey, count] of entries){
+    const any = base.find(x => x.category === catKey);
+    const meta = any ? categoryMeta(any.type, any.category) : { emoji:"◌", name: catKey };
+    const chip = document.createElement("div");
+    chip.className = "chip" + (state.chip === catKey ? " is-active" : "");
+    chip.textContent = `${meta.emoji} ${meta.name} · ${count}`;
+    chip.onclick = () => { state.chip = catKey; haptic("select"); renderAll(); };
+    el.appendChild(chip);
+  }
+
+  if(state.chip !== "all" && !map.has(state.chip)){
+    state.chip = "all";
+  }
 }
 
 function renderStats(){
@@ -210,46 +237,6 @@ function renderStats(){
   $("#listHint").textContent = items.length ? `${items.length} записей` : "пока пусто";
 
   renderChips();
-}
-
-function renderChips(){
-  const el = $("#chips");
-  el.innerHTML = "";
-
-  const items = getFilteredItems();
-
-  // collect categories from filtered-by-range-and-type-but-not-chip/search? We'll use range only + filterType.
-  let base = [...state.items].filter(x => withinRange(x.date));
-  if(state.filterType !== "all") base = base.filter(x => x.type === state.filterType);
-
-  const map = new Map();
-  for(const x of base){
-    map.set(x.category, (map.get(x.category) || 0) + 1);
-  }
-
-  const chipAll = document.createElement("div");
-  chipAll.className = "chip" + (state.chip === "all" ? " is-active" : "");
-  chipAll.textContent = "Все";
-  chipAll.onclick = () => { state.chip = "all"; haptic("select"); renderAll(); };
-  el.appendChild(chipAll);
-
-  // sort by count desc
-  const entries = [...map.entries()].sort((a,b) => b[1]-a[1]).slice(0, 8);
-  for(const [catKey, count] of entries){
-    // to pick emoji, we need type guess: from any matching item
-    const any = base.find(x => x.category === catKey);
-    const meta = any ? categoryMeta(any.type, any.category) : { emoji:"◌", name: catKey };
-    const chip = document.createElement("div");
-    chip.className = "chip" + (state.chip === catKey ? " is-active" : "");
-    chip.textContent = `${meta.emoji} ${meta.name} · ${count}`;
-    chip.onclick = () => { state.chip = catKey; haptic("select"); renderAll(); };
-    el.appendChild(chip);
-  }
-
-  // if chip is active but not present now, reset
-  if(state.chip !== "all" && !map.has(state.chip)){
-    state.chip = "all";
-  }
 }
 
 function renderList(){
@@ -273,7 +260,6 @@ function renderList(){
     row.className = "tx";
     row.dataset.id = x.id;
 
-    // mobile-like swipe hint: we implement long-press delete for safety
     let pressTimer = null;
     row.addEventListener("pointerdown", () => {
       pressTimer = setTimeout(() => {
@@ -302,7 +288,8 @@ function renderList(){
 
     const sub = document.createElement("div");
     sub.className = "tx__sub";
-    sub.textContent = `${meta.name} · ${new Date(x.date+"T00:00:00").toLocaleDateString("ru-RU", { day:"2-digit", month:"short" })}`;
+    sub.textContent =
+      `${meta.name} · ${new Date(x.date+"T00:00:00").toLocaleDateString("ru-RU", { day:"2-digit", month:"short" })}`;
 
     metaBox.appendChild(title);
     metaBox.appendChild(sub);
@@ -328,7 +315,6 @@ function renderList(){
     row.appendChild(left);
     row.appendChild(right);
 
-    // click: quick delete (telegram style) with confirm
     row.addEventListener("dblclick", () => {
       if(confirm("Удалить запись?")) removeItem(x.id);
     });
@@ -424,7 +410,6 @@ async function importJSON(file){
     const text = await file.text();
     const data = JSON.parse(text);
     if(!data?.items || !Array.isArray(data.items)) throw new Error("bad format");
-    // simple normalize
     const items = data.items
       .filter(x => x && (x.type==="income" || x.type==="expense"))
       .map(x => ({
@@ -454,24 +439,36 @@ function setRange(r){
   renderAll();
 }
 
+/* ===== FIXED CHART ===== */
 function drawChart(){
   const canvas = $("#miniChart");
+  if(!canvas) return;
+
   const ctx = canvas.getContext("2d");
 
-  // Fit for device pixel ratio
-  const dpr = Math.max(1, Math.floor(window.devicePixelRatio || 1));
-  const cssW = canvas.clientWidth;
-  const cssH = canvas.clientHeight;
+  // Берём ширину контейнера, чтобы не ловить 0 от canvas (часто в WebView)
+  const cssW = canvas.parentElement?.clientWidth || canvas.clientWidth || 0;
+  const cssH = canvas.clientHeight || 140;
+
+  // Если лэйаут ещё не готов — пропускаем
+  if(cssW < 40 || cssH < 40) return;
+
+  const dpr = Math.max(1, Math.round(window.devicePixelRatio || 1));
+
   canvas.width = Math.floor(cssW * dpr);
   canvas.height = Math.floor(cssH * dpr);
+
+  // КЛЮЧ: сброс трансформации, чтобы scale не накапливался
+  ctx.setTransform(1,0,0,1,0,0);
   ctx.scale(dpr, dpr);
 
-  // Collect daily points for selected range
+  const W = cssW;
+  const H = cssH;
+
   const days = state.range === "all" ? 30 : Number(state.range);
   const now = new Date();
   now.setHours(0,0,0,0);
 
-  // Build day list (left->right)
   const dayList = [];
   for(let i=days-1; i>=0; i--){
     const d = new Date(now);
@@ -491,14 +488,16 @@ function drawChart(){
   const expenses = dayList.map(d => byDay.get(d).expense);
   const balances = incomes.map((v,i)=> v - expenses[i]);
 
-  // Normalize
-  const maxV = Math.max(1, ...incomes, ...expenses, ...balances.map(v=>Math.abs(v)));
-  const W = cssW, H = cssH;
+  const maxV = Math.max(
+    1,
+    ...incomes,
+    ...expenses,
+    ...balances.map(v => Math.abs(v))
+  );
 
-  // Clear
   ctx.clearRect(0,0,W,H);
 
-  // Soft grid
+  // grid
   ctx.globalAlpha = 0.55;
   ctx.lineWidth = 1;
   ctx.strokeStyle = "rgba(255,255,255,0.16)";
@@ -511,10 +510,22 @@ function drawChart(){
   }
   ctx.globalAlpha = 1;
 
-  // Helper line draw (no fixed colors in requirements? Here it's plain RGBA; acceptable.)
   const line = (arr, rgba) => {
     ctx.strokeStyle = rgba;
     ctx.lineWidth = 2;
+
+    // если одна точка — рисуем одну точку
+    if(arr.length <= 1){
+      const v = arr[0] || 0;
+      const x = W;
+      const y = H - (Math.abs(v)/maxV)*H;
+      ctx.fillStyle = rgba;
+      ctx.beginPath();
+      ctx.arc(x, y, 2.6, 0, Math.PI*2);
+      ctx.fill();
+      return;
+    }
+
     ctx.beginPath();
     arr.forEach((v,i)=>{
       const x = (W/(arr.length-1))*i;
@@ -524,7 +535,6 @@ function drawChart(){
     });
     ctx.stroke();
 
-    // dots
     ctx.fillStyle = rgba;
     arr.forEach((v,i)=>{
       const x = (W/(arr.length-1))*i;
@@ -535,24 +545,22 @@ function drawChart(){
     });
   };
 
-  // Use subtle, consistent palette (matches CSS variables)
-  line(incomes, "rgba(102,242,194,0.9)");
+  line(incomes,  "rgba(102,242,194,0.9)");
   line(expenses, "rgba(255,107,154,0.9)");
   line(balances, "rgba(143,179,255,0.9)");
 }
+/* ===== /FIXED CHART ===== */
 
 function renderAll(){
   renderStats();
   renderList();
-  // chart uses all items but respects range; draw after layout
-  requestAnimationFrame(drawChart);
+  // двойной кадр — чтобы дождаться layout в Telegram WebView
+  requestAnimationFrame(() => requestAnimationFrame(drawChart));
 }
 
 function bind(){
-  // default date
   $("#date").value = todayISO();
 
-  // type toggle
   $$(".toggle__btn").forEach(btn => {
     btn.addEventListener("click", () => {
       setType(btn.dataset.type);
@@ -560,7 +568,6 @@ function bind(){
     });
   });
 
-  // range tabs
   $$(".seg__btn").forEach(btn => {
     btn.addEventListener("click", () => {
       const v = btn.dataset.range === "all" ? "all" : Number(btn.dataset.range);
@@ -568,7 +575,6 @@ function bind(){
     });
   });
 
-  // form
   $("#txForm").addEventListener("submit", (e) => {
     e.preventDefault();
     const amount = parseMoney($("#amount").value);
@@ -589,7 +595,6 @@ function bind(){
     $("#amount").focus();
   });
 
-  // filters
   $("#filterType").addEventListener("change", (e) => {
     state.filterType = e.target.value;
     haptic("select");
@@ -599,9 +604,9 @@ function bind(){
   $("#search").addEventListener("input", (e) => {
     state.search = e.target.value;
     renderList();
+    // график не обязательно перерисовывать на каждый ввод
   });
 
-  // buttons
   $("#btnClear").addEventListener("click", clearAll);
   $("#btnDemo").addEventListener("click", seedDemo);
 
@@ -612,16 +617,17 @@ function bind(){
     e.target.value = "";
   });
 
-  // theme button (manual)
   $("#btnTheme").addEventListener("click", () => {
     document.documentElement.classList.toggle("light");
     haptic("impact","light");
+    // перерисуем график после смены темы
+    requestAnimationFrame(() => requestAnimationFrame(drawChart));
   });
 
-  // resize chart
-  window.addEventListener("resize", () => drawChart());
+  window.addEventListener("resize", () => {
+    requestAnimationFrame(() => requestAnimationFrame(drawChart));
+  });
 
-  // Telegram main button as quick add
   if(tg){
     try{
       tg.MainButton.setText("Добавить");
@@ -642,10 +648,12 @@ function init(){
   bind();
   renderAll();
 
-  // Telegram theme changes
   if(tg){
     try{
-      tg.onEvent("themeChanged", () => applyTelegramTheme());
+      tg.onEvent("themeChanged", () => {
+        applyTelegramTheme();
+        requestAnimationFrame(() => requestAnimationFrame(drawChart));
+      });
     }catch(_){}
   }
 }
