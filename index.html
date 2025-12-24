@@ -7,8 +7,6 @@
 
   <meta name="theme-color" content="#0b0f1a" />
   <link rel="stylesheet" href="./styles.css" />
-
-  <!-- Telegram WebApp SDK -->
   <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
@@ -54,9 +52,7 @@
       </div>
 
       <div class="quick">
-        <button class="primary" id="btnAdd">
-          <span>＋</span> Добавить
-        </button>
+        <button class="primary" id="btnAdd"><span>＋</span> Добавить</button>
 
         <div class="segmented" role="tablist" aria-label="Фильтр">
           <button class="seg-btn active" data-filter="all">Все</button>
@@ -92,12 +88,12 @@
       </div>
     </section>
 
-    <!-- Add/Edit sheet -->
-    <div class="overlay" id="overlay" hidden>
+    <!-- ===== ADD / EDIT OVERLAY ===== -->
+    <div class="overlay" id="overlayAdd" hidden>
       <div class="sheet" role="dialog" aria-modal="true" aria-label="Добавить операцию">
         <div class="sheet-top">
           <div class="sheet-title" id="sheetTitle">Новая операция</div>
-          <button class="icon-btn" id="btnClose" aria-label="Закрыть">
+          <button class="icon-btn" id="btnCloseAdd" aria-label="Закрыть">
             <svg viewBox="0 0 24 24" class="icon"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"/></svg>
           </button>
         </div>
@@ -154,19 +150,19 @@
           </label>
 
           <div class="row end">
-            <button class="secondary" id="btnCancel">Отмена</button>
+            <button class="secondary" id="btnCancelAdd">Отмена</button>
             <button class="primary" id="btnSave">Сохранить</button>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- Settings sheet -->
-    <div class="overlay" id="settingsOverlay" hidden>
+    <!-- ===== SETTINGS OVERLAY ===== -->
+    <div class="overlay" id="overlaySettings" hidden>
       <div class="sheet" role="dialog" aria-modal="true" aria-label="Настройки">
         <div class="sheet-top">
           <div class="sheet-title">Настройки</div>
-          <button class="icon-btn" id="btnSettingsClose" aria-label="Закрыть">
+          <button class="icon-btn" id="btnCloseSettings" aria-label="Закрыть">
             <svg viewBox="0 0 24 24" class="icon"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"/></svg>
           </button>
         </div>
