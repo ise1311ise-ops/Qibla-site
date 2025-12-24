@@ -3,8 +3,13 @@ const TG = window.Telegram?.WebApp;
 const $  = (s) => document.querySelector(s);
 const $$ = (s) => Array.from(document.querySelectorAll(s));
 
-const storeKey    = "finny.v2.data";
-const settingsKey = "finny.v2.settings";
+function on(id, ev, fn){
+  const el = $(id);
+  if(el) el.addEventListener(ev, fn);
+}
+
+const storeKey    = "finny.v3.data";
+const settingsKey = "finny.v3.settings";
 
 const state = {
   filter: "all",
@@ -13,7 +18,7 @@ const state = {
   editingId: null,
   items: [],
   settings: { theme: "dark", dateFormat: "ru" },
-  modal: "none", // none | add | settings
+  modal: "none" // none | add | settings
 };
 
 const currencyMap = { RUB:"₽", EUR:"€", USD:"$" };
@@ -98,26 +103,25 @@ function matchFilter(it){
   return true;
 }
 
-/* ===== MODAL MANAGER (главный фикс) ===== */
+/* ===== MODAL MANAGER ===== */
 function lockScroll(){ document.body.style.overflow = "hidden"; }
 function unlockScroll(){ document.body.style.overflow = ""; }
 
 function hideAllModals(){
-  $("#overlayAdd").hidden = true;
-  $("#overlaySettings").hidden = true;
+  const a = $("#overlayAdd");
+  const s = $("#overlaySettings");
+  if(a) a.hidden = true;
+  if(s) s.hidden = true;
   state.modal = "none";
 
-  // Telegram MainButton
   if (TG){
     TG.MainButton.offClick(onSave);
     TG.MainButton.hide();
   }
-
   unlockScroll();
 }
 
 function openModal(kind){
-  // железно: сначала скрываем всё
   hideAllModals();
 
   if(kind === "add"){
@@ -146,14 +150,21 @@ function closeModal(){
   hideAllModals();
 }
 
-/* ===== UI fill ===== */
 function setTypeUI(type){
   $$(".type-btn[data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === type));
 }
 
+function setThemeUI(){
+  $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
+}
+
+function setDateFmtUI(){
+  $$(".type-btn[data-datefmt]").forEach(b => b.classList.toggle("active", b.dataset.datefmt === state.settings.dateFormat));
+}
+
+/* ===== Render ===== */
 function render(){
   const { income, expense, balance } = compute();
-
   $("#incomeValue").textContent = money(income, "RUB");
   $("#expenseValue").textContent = money(expense, "RUB");
   $("#balanceValue").textContent = money(balance, "RUB");
@@ -232,10 +243,8 @@ function openAdd(editItem = null){
 }
 
 function openSettings(){
-  // подставим актуальные значения
-  $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
-  $("#dateFormatSelect").value = state.settings.dateFormat;
-
+  setThemeUI();
+  setDateFmtUI();
   openModal("settings");
 }
 
@@ -314,17 +323,15 @@ function importJSON(file){
 
 /* ===== Events ===== */
 function bind(){
-  $("#btnAdd").addEventListener("click", () => openAdd(null));
-  $("#btnSettings").addEventListener("click", openSettings);
+  on("#btnAdd", "click", () => openAdd(null));
+  on("#btnSettings", "click", openSettings);
 
-  // закрытие add
-  $("#btnCloseAdd").addEventListener("click", closeModal);
-  $("#btnCancelAdd").addEventListener("click", closeModal);
-  $("#btnSave").addEventListener("click", onSave);
+  on("#btnCloseAdd", "click", closeModal);
+  on("#btnCancelAdd", "click", closeModal);
+  on("#btnSave", "click", onSave);
 
-  // закрытие settings
-  $("#btnCloseSettings").addEventListener("click", closeModal);
-  $("#btnSettingsDone").addEventListener("click", () => {
+  on("#btnCloseSettings", "click", closeModal);
+  on("#btnSettingsDone", "click", () => {
     closeModal();
     saveSettings();
     applyTheme();
@@ -332,19 +339,37 @@ function bind(){
     haptic("success");
   });
 
-  // клик по фону
-  $("#overlayAdd").addEventListener("click", (e) => {
-    if(e.target === $("#overlayAdd")) closeModal();
-  });
-  $("#overlaySettings").addEventListener("click", (e) => {
-    if(e.target === $("#overlaySettings")) closeModal();
-  });
+  // клики по фону
+  on("#overlayAdd", "click", (e) => { if(e.target === $("#overlayAdd")) closeModal(); });
+  on("#overlaySettings", "click", (e) => { if(e.target === $("#overlaySettings")) closeModal(); });
 
-  // переключатель типа
+  // тип (доход/расход)
   $$(".type-btn[data-type]").forEach(btn => {
     btn.addEventListener("click", () => {
       state.type = btn.dataset.type;
       setTypeUI(state.type);
+      haptic("success");
+    });
+  });
+
+  // тема (dark/light)
+  $$(".type-btn[data-theme]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.settings.theme = btn.dataset.theme;
+      setThemeUI();
+      applyTheme();
+      saveSettings();
+      haptic("success");
+    });
+  });
+
+  // формат даты (ru/iso) — КНОПКИ вместо select
+  $$(".type-btn[data-datefmt]").forEach(btn => {
+    btn.addEventListener("click", () => {
+      state.settings.dateFormat = btn.dataset.datefmt;
+      setDateFmtUI();
+      saveSettings();
+      render();
       haptic("success");
     });
   });
@@ -361,13 +386,13 @@ function bind(){
   });
 
   // поиск
-  $("#searchInput").addEventListener("input", (e) => {
+  on("#searchInput", "input", (e) => {
     state.q = e.target.value.trim();
     render();
   });
 
   // edit/delete
-  $("#items").addEventListener("click", (e) => {
+  on("#items", "click", (e) => {
     const editId = e.target?.dataset?.edit;
     const delId  = e.target?.dataset?.del;
 
@@ -380,14 +405,14 @@ function bind(){
     }
   });
 
-  // export/import/clear
-  $("#btnExport").addEventListener("click", exportJSON);
-  $("#importFile").addEventListener("change", (e) => {
+  on("#btnExport", "click", exportJSON);
+  on("#importFile", "change", (e) => {
     const f = e.target.files?.[0];
     if(f) importJSON(f);
     e.target.value = "";
   });
-  $("#btnClear").addEventListener("click", () => {
+
+  on("#btnClear", "click", () => {
     if(confirm("Точно очистить все данные?")){
       state.items = [];
       save();
@@ -396,24 +421,6 @@ function bind(){
     }
   });
 
-  // тема
-  $$(".type-btn[data-theme]").forEach(btn => {
-    btn.addEventListener("click", () => {
-      state.settings.theme = btn.dataset.theme;
-      $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
-      applyTheme();
-      saveSettings();
-      haptic("success");
-    });
-  });
-
-  $("#dateFormatSelect").addEventListener("change", (e) => {
-    state.settings.dateFormat = e.target.value;
-    saveSettings();
-    render();
-  });
-
-  // ESC (в браузере)
   document.addEventListener("keydown", (e) => {
     if(e.key === "Escape") closeModal();
   });
@@ -431,8 +438,6 @@ function initTelegram(){
     state.settings.theme = TG.colorScheme === "light" ? "light" : "dark";
     saveSettings();
   }
-
-  TG.enableClosingConfirmation?.();
 
   TG.onEvent?.("themeChanged", () => {
     state.settings.theme = TG.colorScheme === "light" ? "light" : "dark";
