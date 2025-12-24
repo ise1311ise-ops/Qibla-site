@@ -14,7 +14,6 @@ const state = {
   q: "",
   type: "expense",
   editingId: null,
-  currency: "RUB",
   items: [],
   settings: {
     theme: "dark",
@@ -71,6 +70,7 @@ function saveSettings(){
 
 function applyTheme(){
   document.body.classList.toggle("light", state.settings.theme === "light");
+
   // Telegram theme sync
   if (TG){
     TG.setHeaderColor?.(state.settings.theme === "light" ? "#f7f8ff" : "#070a12");
@@ -82,7 +82,7 @@ function money(n, cur){
   const sym = currencyMap[cur] ?? cur;
   const sign = n < 0 ? "-" : "";
   const abs = Math.abs(n);
-  // simple formatting with spaces
+
   const s = abs.toFixed(0).replace(/\B(?=(\d{3})+(?!\d))/g, " ");
   return `${sign}${s} ${sym}`;
 }
@@ -171,14 +171,34 @@ function escapeHTML(s){
     .replaceAll("'","&#039;");
 }
 
-/* Modal logic */
+/* ======= Overlay control (главный фикс) ======= */
+function isOpen(el){ return el && !el.hidden; }
+
+function closeAllOverlays(){
+  if (isOpen($("#overlay"))) closeSheet(false);
+  if (isOpen($("#settingsOverlay"))) closeSettings(false);
+  document.body.style.overflow = "";
+}
+
+function lockScroll(){
+  document.body.style.overflow = "hidden";
+}
+function unlockScroll(){
+  // если ни один оверлей не открыт — возвращаем скролл
+  const anyOpen = isOpen($("#overlay")) || isOpen($("#settingsOverlay"));
+  if (!anyOpen) document.body.style.overflow = "";
+}
+
+/* ======= Add/Edit sheet ======= */
 function openSheet(editItem = null){
+  // закрываем настройки, если открыты
+  if (isOpen($("#settingsOverlay"))) closeSettings(false);
+
   state.editingId = editItem?.id ?? null;
 
   $("#overlay").hidden = false;
-  document.body.style.overflow = "hidden";
+  lockScroll();
 
-  // defaults
   const now = todayISO();
   $("#dateInput").value = editItem?.date ?? now;
   $("#amountInput").value = editItem?.amount ?? "";
@@ -186,45 +206,55 @@ function openSheet(editItem = null){
   $("#currencySelect").value = editItem?.currency ?? "RUB";
   $("#categorySelect").value = editItem?.category ?? "Еда";
 
-  // type
   state.type = editItem?.type ?? "expense";
   setTypeUI(state.type);
 
   $("#sheetTitle").textContent = editItem ? "Редактировать" : "Новая операция";
 
-  // Telegram main button as native CTA
   if (TG){
     TG.MainButton.setText(editItem ? "Сохранить изменения" : "Сохранить");
     TG.MainButton.show();
+    TG.MainButton.offClick(onSave);
     TG.MainButton.onClick(onSave);
   }
 }
 
-function closeSheet(){
+function closeSheet(fromUser = true){
   $("#overlay").hidden = true;
-  document.body.style.overflow = "";
+  unlockScroll();
 
   if (TG){
     TG.MainButton.offClick(onSave);
     TG.MainButton.hide();
   }
+
+  // опционально — “отмена”
+  if (fromUser) TG?.HapticFeedback?.impactOccurred?.("light");
 }
 
 function setTypeUI(type){
   $$(".type-btn[data-type]").forEach(b => b.classList.toggle("active", b.dataset.type === type));
 }
 
+/* ======= Settings sheet ======= */
 function openSettings(){
+  // закрываем форму, если открыта
+  if (isOpen($("#overlay"))) closeSheet(false);
+
   $("#settingsOverlay").hidden = false;
-  document.body.style.overflow = "hidden";
-  // set UI
+  lockScroll();
+
   $$(".type-btn[data-theme]").forEach(b => b.classList.toggle("active", b.dataset.theme === state.settings.theme));
   $("#dateFormatSelect").value = state.settings.dateFormat;
+
+  TG?.HapticFeedback?.impactOccurred?.("light");
 }
 
-function closeSettings(){
+function closeSettings(fromUser = true){
   $("#settingsOverlay").hidden = true;
-  document.body.style.overflow = "";
+  unlockScroll();
+
+  if (fromUser) TG?.HapticFeedback?.impactOccurred?.("light");
 }
 
 function onSave(){
@@ -244,7 +274,9 @@ function onSave(){
     category: $("#categorySelect").value,
     date: $("#dateInput").value || todayISO(),
     note: $("#noteInput").value.trim(),
-    createdAt: state.editingId ? (state.items.find(i=>i.id===state.editingId)?.createdAt ?? Date.now()) : Date.now(),
+    createdAt: state.editingId
+      ? (state.items.find(i=>i.id===state.editingId)?.createdAt ?? Date.now())
+      : Date.now(),
   };
 
   if(state.editingId){
@@ -255,7 +287,7 @@ function onSave(){
 
   save();
   render();
-  closeSheet();
+  closeSheet(false);
   haptic("success");
 }
 
@@ -313,12 +345,16 @@ function importJSON(file){
 /* Events */
 function bind(){
   $("#btnAdd").addEventListener("click", () => openSheet(null));
-  $("#btnClose").addEventListener("click", closeSheet);
-  $("#btnCancel").addEventListener("click", closeSheet);
+  $("#btnClose").addEventListener("click", () => closeSheet(true));
+  $("#btnCancel").addEventListener("click", () => closeSheet(true));
   $("#btnSave").addEventListener("click", onSave);
 
+  // закрытие по тапу на фон
   $("#overlay").addEventListener("click", (e) => {
-    if(e.target === $("#overlay")) closeSheet();
+    if(e.target === $("#overlay")) closeSheet(true);
+  });
+  $("#settingsOverlay").addEventListener("click", (e) => {
+    if(e.target === $("#settingsOverlay")) closeSettings(true);
   });
 
   // type buttons
@@ -379,9 +415,9 @@ function bind(){
 
   // settings
   $("#btnSettings").addEventListener("click", openSettings);
-  $("#btnSettingsClose").addEventListener("click", closeSettings);
+  $("#btnSettingsClose").addEventListener("click", () => closeSettings(true));
   $("#btnSettingsDone").addEventListener("click", () => {
-    closeSettings();
+    closeSettings(false);
     saveSettings();
     applyTheme();
     render();
@@ -403,6 +439,13 @@ function bind(){
     saveSettings();
     render();
   });
+
+  // ESC (в браузере)
+  document.addEventListener("keydown", (e) => {
+    if(e.key === "Escape"){
+      closeAllOverlays();
+    }
+  });
 }
 
 /* Telegram init */
@@ -412,19 +455,15 @@ function initTelegram(){
   TG.ready();
   TG.expand();
 
-  // nicer look with Telegram theme
   const cs = TG.colorScheme; // "dark" | "light"
-  // only auto-set if user hasn't changed it before
   const saved = localStorage.getItem(settingsKey);
   if(!saved){
     state.settings.theme = cs === "light" ? "light" : "dark";
     saveSettings();
   }
 
-  // optional: show close confirmation
   TG.enableClosingConfirmation?.();
 
-  // update theme when Telegram changes
   TG.onEvent?.("themeChanged", () => {
     const s = TG.colorScheme;
     state.settings.theme = s === "light" ? "light" : "dark";
