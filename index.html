@@ -1,0 +1,444 @@
+<!doctype html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
+  <title>Тасбих</title>
+
+  <!-- Telegram WebApp SDK -->
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+
+  <style>
+    :root{
+      --bg:#0f1115;
+      --text:#ffffff;
+      --muted:rgba(255,255,255,.65);
+      --card:rgba(255,255,255,.08);
+      --accent:#2ea6ff;
+      --danger:#ff4d4f;
+      --ok:#2ecc71;
+      --shadow:0 10px 30px rgba(0,0,0,.35);
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%;margin:0;background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif}
+    .container{max-width:560px;margin:0 auto;padding:16px 14px 28px}
+    .header{display:flex;align-items:baseline;justify-content:space-between;gap:12px;margin-bottom:12px}
+    .title{font-size:20px;font-weight:800;letter-spacing:.2px}
+    .subtitle{font-size:13px;color:var(--muted)}
+    .pill{padding:10px 12px;border-radius:999px;background:rgba(255,255,255,.08);font-size:13px}
+    .card{background:var(--card);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);backdrop-filter:blur(10px)}
+    .row{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
+    .big{font-size:56px;font-weight:900;line-height:1}
+    .small{font-size:13px;color:var(--muted);line-height:1.35}
+    .badgeOk{display:inline-block;margin-left:8px;font-size:12px;padding:4px 8px;border-radius:999px;background:rgba(46,204,113,.18);color:var(--ok);font-weight:800;vertical-align:middle}
+    .btn{border:0;cursor:pointer;border-radius:16px;padding:12px 12px;font-weight:800;color:var(--text);background:rgba(255,255,255,.10);transition:transform .05s ease,background .2s ease;user-select:none;-webkit-tap-highlight-color:transparent}
+    .btn:active{transform:scale(.98)}
+    .btnPrimary{background:var(--accent);color:#061019}
+    .btnDanger{background:var(--danger)}
+    .btnGhost{background:rgba(255,255,255,.07)}
+    .tapArea{
+      margin-top:12px;border-radius:22px;padding:14px;
+      background:
+        radial-gradient(circle at 30% 20%, rgba(46,166,255,.25), transparent 45%),
+        radial-gradient(circle at 70% 80%, rgba(46,255,170,.18), transparent 48%),
+        rgba(255,255,255,.06);
+      box-shadow:var(--shadow)
+    }
+    .tapButton{
+      width:100%;border-radius:22px;padding:20px 16px;font-size:22px;font-weight:950;border:0;cursor:pointer;
+      color:#061019;background:linear-gradient(180deg, rgba(46,166,255,1), rgba(46,166,255,.85));
+      -webkit-tap-highlight-color:transparent
+    }
+    .tapButton:active{transform:scale(.99)}
+    .grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:10px}
+    .grid2{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:10px}
+    .sep{height:1px;background:rgba(255,255,255,.10);margin:12px 0}
+    .input{
+      width:100%;border-radius:14px;border:1px solid rgba(255,255,255,.14);
+      background:rgba(0,0,0,.15);color:var(--text);padding:12px 12px;font-weight:700;outline:none
+    }
+    .kpi{display:flex;gap:10px;flex-wrap:wrap}
+    .kpi .pill{background:rgba(255,255,255,.07)}
+    .mono{font-variant-numeric:tabular-nums}
+    details{margin-top:12px}
+    summary{cursor:pointer;font-weight:800}
+    table{width:100%;border-collapse:collapse;margin-top:10px}
+    th,td{padding:10px 8px;border-bottom:1px solid rgba(255,255,255,.10);text-align:left;font-size:13px}
+    th{color:var(--muted);font-weight:800}
+    .right{text-align:right}
+  </style>
+</head>
+
+<body>
+  <div class="container">
+    <div class="header">
+      <div>
+        <div class="title">Тасбих</div>
+        <div id="subtitle" class="subtitle"></div>
+      </div>
+      <div class="pill">Цель: <span id="targetLabel" class="mono"></span></div>
+    </div>
+
+    <div class="card">
+      <div class="row" style="align-items:flex-end">
+        <div>
+          <div class="big mono">
+            <span id="count">0</span>
+            <span id="badge" class="badgeOk" style="display:none">цель!</span>
+          </div>
+          <div id="modeLine" class="small"></div>
+        </div>
+
+        <div class="row" style="justify-content:flex-end">
+          <button id="btnDec" class="btn btnGhost">−1</button>
+          <button id="btnReset" class="btn btnDanger">Сброс</button>
+        </div>
+      </div>
+
+      <div class="tapArea">
+        <button id="btnInc" class="tapButton">+1</button>
+
+        <div class="grid">
+          <button class="btn btnPrimary" data-target="33">33</button>
+          <button class="btn btnPrimary" data-target="99">99</button>
+          <button class="btn btnPrimary" data-target="100">100</button>
+        </div>
+
+        <div class="grid2">
+          <button id="btnModeSimple" class="btn btnGhost">Режим: обычный</button>
+          <button id="btnMode33x3" class="btn btnGhost">Режим: 33×3</button>
+        </div>
+
+        <div style="margin-top:10px">
+          <input id="targetInput" class="input" inputmode="numeric" pattern="[0-9]*" placeholder="Своя цель (например 200) → Enter" />
+        </div>
+
+        <div class="row" style="margin-top:10px">
+          <div class="small">Хаптика/вибро</div>
+          <button id="btnVibrate" class="btn"></button>
+        </div>
+
+        <div class="sep"></div>
+
+        <div class="kpi">
+          <div class="pill">Сегодня: <b class="mono" id="todayTotal">0</b></div>
+          <div class="pill">Серий: <b class="mono" id="streak">0</b></div>
+          <div class="pill">Всего: <b class="mono" id="allTotal">0</b></div>
+        </div>
+
+        <details>
+          <summary>История по дням</summary>
+          <div class="small" style="margin-top:8px">
+            Хранится локально на устройстве (localStorage). Можно очистить историю кнопкой ниже.
+          </div>
+          <table>
+            <thead>
+              <tr>
+                <th>День</th>
+                <th class="right">Кол-во</th>
+              </tr>
+            </thead>
+            <tbody id="historyBody"></tbody>
+          </table>
+          <div class="row" style="margin-top:10px">
+            <button id="btnClearHistory" class="btn btnDanger">Очистить историю</button>
+            <button id="btnExport" class="btn">Экспорт JSON</button>
+          </div>
+          <textarea id="exportBox" class="input" style="display:none;margin-top:10px;height:140px;font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace"></textarea>
+        </details>
+      </div>
+    </div>
+
+    <div class="small" style="margin-top:12px">
+      Подсказка: мини-апп открывается внутри Telegram через кнопку WebApp в боте. Счёт и статистика сохраняются локально.
+    </div>
+  </div>
+
+<script>
+(() => {
+  const tg = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp : null;
+
+  // ---- State ----
+  const LS_KEY = "tasbih_onefile_v2";
+  const ZIKR = ["Субханаллах", "Альхамдулиллях", "Аллаху Акбар"]; // 33×3
+  const todayKey = () => new Date().toISOString().slice(0,10); // YYYY-MM-DD
+  const ruDate = () => new Date().toLocaleDateString("ru-RU");
+  const nowTime = () => new Date().toLocaleTimeString("ru-RU", {hour:"2-digit", minute:"2-digit"});
+
+  const state = load() || {
+    count: 0,
+    target: 33,
+    vibrate: true,
+    mode: "simple", // simple | 33x3
+    zikrIndex: 0,
+    stats: {
+      byDay: {},     // { "YYYY-MM-DD": number }
+      lastDay: null  // "YYYY-MM-DD"
+    }
+  };
+
+  // Ensure today's bucket exists
+  bumpDay();
+
+  // ---- Elements ----
+  const $ = (id) => document.getElementById(id);
+  const elCount = $("count");
+  const elBadge = $("badge");
+  const elTargetLabel = $("targetLabel");
+  const elVibrate = $("btnVibrate");
+  const elSubtitle = $("subtitle");
+  const elModeLine = $("modeLine");
+  const elTodayTotal = $("todayTotal");
+  const elAllTotal = $("allTotal");
+  const elStreak = $("streak");
+  const elHistoryBody = $("historyBody");
+  const elExportBox = $("exportBox");
+
+  // ---- Telegram init + theme ----
+  if (tg) {
+    tg.ready();
+    tg.expand();
+
+    const theme = tg.themeParams || {};
+    const root = document.documentElement;
+    if (theme.bg_color) root.style.setProperty("--bg", theme.bg_color);
+    if (theme.text_color) root.style.setProperty("--text", theme.text_color);
+    if (theme.hint_color) root.style.setProperty("--muted", theme.hint_color);
+    if (theme.button_color) root.style.setProperty("--accent", theme.button_color);
+
+    // Optional: show main button as reset
+    try {
+      tg.MainButton.setText("Сброс");
+      tg.MainButton.onClick(() => reset());
+      tg.MainButton.show();
+    } catch {}
+  }
+
+  // ---- UI bindings ----
+  $("btnInc").addEventListener("click", () => inc());
+  $("btnDec").addEventListener("click", () => dec());
+  $("btnReset").addEventListener("click", () => reset());
+
+  document.querySelectorAll("[data-target]").forEach(btn => {
+    btn.addEventListener("click", () => setTarget(Number(btn.dataset.target)));
+  });
+
+  $("btnModeSimple").addEventListener("click", () => setMode("simple"));
+  $("btnMode33x3").addEventListener("click", () => setMode("33x3"));
+
+  elVibrate.addEventListener("click", () => {
+    state.vibrate = !state.vibrate;
+    haptic("light");
+    persist();
+    render();
+  });
+
+  $("targetInput").addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const n = Number(String(e.target.value).trim());
+    if (Number.isFinite(n) && n > 0) {
+      setTarget(n);
+      e.target.value = "";
+    } else {
+      haptic("error");
+    }
+  });
+
+  $("btnClearHistory").addEventListener("click", () => {
+    if (!confirm("Очистить всю историю по дням?")) return;
+    state.stats.byDay = {};
+    state.stats.lastDay = null;
+    bumpDay();
+    persist();
+    render();
+    haptic("warning");
+  });
+
+  $("btnExport").addEventListener("click", () => {
+    const payload = {
+      exportedAt: new Date().toISOString(),
+      state
+    };
+    elExportBox.style.display = "block";
+    elExportBox.value = JSON.stringify(payload, null, 2);
+    elExportBox.select();
+    haptic("success");
+  });
+
+  // Allow tap anywhere on tapArea to count (except inputs/buttons)
+  document.querySelector(".tapArea").addEventListener("click", (e) => {
+    const tag = (e.target && e.target.tagName) ? e.target.tagName.toLowerCase() : "";
+    if (tag === "button" || tag === "input" || tag === "textarea" || tag === "summary") return;
+    inc();
+  });
+
+  // ---- Core actions ----
+  function bumpDay() {
+    const k = todayKey();
+    if (!state.stats.byDay[k]) state.stats.byDay[k] = 0;
+    state.stats.lastDay = k;
+  }
+
+  function haptic(kind = "light") {
+    if (!state.vibrate) return;
+    // Telegram haptics preferred
+    if (tg && tg.HapticFeedback) {
+      try {
+        if (kind === "light") tg.HapticFeedback.impactOccurred("light");
+        else if (kind === "success") tg.HapticFeedback.notificationOccurred("success");
+        else if (kind === "warning") tg.HapticFeedback.notificationOccurred("warning");
+        else if (kind === "error") tg.HapticFeedback.notificationOccurred("error");
+        else tg.HapticFeedback.impactOccurred("light");
+        return;
+      } catch {}
+    }
+    // Fallback vibration
+    if (navigator.vibrate) {
+      if (kind === "success") navigator.vibrate([10, 30, 10]);
+      else if (kind === "warning") navigator.vibrate([20, 40, 20]);
+      else if (kind === "error") navigator.vibrate([40, 40, 40]);
+      else navigator.vibrate(10);
+    }
+  }
+
+  function inc() {
+    bumpDay();
+
+    state.count += 1;
+    state.stats.byDay[todayKey()] += 1;
+
+    // Mode logic: 33×3 rotates zikr every 33
+    if (state.mode === "33x3") {
+      if (state.count % 33 === 0) {
+        state.zikrIndex = (state.zikrIndex + 1) % 3;
+        haptic("success");
+      } else {
+        haptic("light");
+      }
+    } else {
+      // simple
+      if (state.count % state.target === 0) haptic("success");
+      else haptic("light");
+    }
+
+    persist();
+    render();
+  }
+
+  function dec() {
+    bumpDay();
+    if (state.count <= 0) { haptic("warning"); return; }
+
+    state.count -= 1;
+    // Decrease today's stats too, but not below 0
+    const k = todayKey();
+    state.stats.byDay[k] = Math.max(0, (state.stats.byDay[k] || 0) - 1);
+
+    haptic("light");
+    persist();
+    render();
+  }
+
+  function reset() {
+    state.count = 0;
+    if (state.mode === "33x3") state.zikrIndex = 0;
+    haptic("warning");
+    persist();
+    render();
+  }
+
+  function setTarget(n) {
+    state.target = n;
+    if (state.mode !== "simple") state.mode = "simple"; // логично: цель относится к простому режиму
+    haptic("light");
+    persist();
+    render();
+  }
+
+  function setMode(mode) {
+    state.mode = mode;
+    if (mode === "33x3") {
+      state.target = 33; // в этом режиме шаг 33 фиксирован
+      state.zikrIndex = 0;
+    }
+    haptic("light");
+    persist();
+    render();
+  }
+
+  // ---- Stats helpers ----
+  function computeAllTotal() {
+    return Object.values(state.stats.byDay || {}).reduce((a,b) => a + (Number(b)||0), 0);
+  }
+
+  function computeStreak() {
+    // streak = подряд идущие дни до сегодня включительно, где count > 0
+    const byDay = state.stats.byDay || {};
+    let streak = 0;
+    let d = new Date();
+    for (;;) {
+      const k = d.toISOString().slice(0,10);
+      if ((byDay[k] || 0) > 0) streak += 1;
+      else break;
+      d.setDate(d.getDate() - 1);
+    }
+    return streak;
+  }
+
+  function renderHistory() {
+    const entries = Object.entries(state.stats.byDay || {})
+      .sort((a,b) => b[0].localeCompare(a[0]))
+      .slice(0, 30); // последние 30 дней
+
+    elHistoryBody.innerHTML = entries.map(([day, cnt]) => {
+      return `<tr><td class="mono">${day}</td><td class="right mono"><b>${cnt}</b></td></tr>`;
+    }).join("") || `<tr><td colspan="2" class="small">Пока пусто</td></tr>`;
+  }
+
+  // ---- Persistence ----
+  function persist() {
+    try { localStorage.setItem(LS_KEY, JSON.stringify(state)); } catch {}
+  }
+  function load() {
+    try {
+      const raw = localStorage.getItem(LS_KEY);
+      return raw ? JSON.parse(raw) : null;
+    } catch { return null; }
+  }
+
+  // ---- Render ----
+  function render() {
+    // subtitle
+    elSubtitle.textContent = `Мини-апп для Telegram • ${ruDate()} • ${nowTime()}`;
+
+    // mode line
+    if (state.mode === "33x3") {
+      elModeLine.innerHTML = `Режим: <b>33×3</b> • Сейчас: <b>${ZIKR[state.zikrIndex]}</b>`;
+    } else {
+      elModeLine.innerHTML = `Режим: <b>обычный</b> • Цель: <b class="mono">${state.target}</b>`;
+    }
+
+    elCount.textContent = String(state.count);
+    elTargetLabel.textContent = String(state.mode === "33x3" ? 33 : state.target);
+
+    const reached = state.count > 0 && (
+      state.mode === "33x3" ? (state.count % 33 === 0) : (state.count % state.target === 0)
+    );
+    elBadge.style.display = reached ? "inline-block" : "none";
+
+    elVibrate.textContent = state.vibrate ? "Включено" : "Выключено";
+
+    const tKey = todayKey();
+    elTodayTotal.textContent = String(state.stats.byDay[tKey] || 0);
+    elAllTotal.textContent = String(computeAllTotal());
+    elStreak.textContent = String(computeStreak());
+
+    renderHistory();
+  }
+
+  render();
+})();
+</script>
+</body>
+</html>
