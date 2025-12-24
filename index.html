@@ -1,202 +1,218 @@
 <!doctype html>
 <html lang="ru">
 <head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover" />
-  <title>Finny — Доходы и Расходы</title>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Glass Budget — Telegram Mini App</title>
 
-  <meta name="theme-color" content="#0b0f1a" />
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;600;700;800&display=swap" rel="stylesheet">
+
   <link rel="stylesheet" href="./styles.css" />
-  <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </head>
 
 <body>
-  <div class="bg-orb orb-1"></div>
-  <div class="bg-orb orb-2"></div>
-  <div class="bg-orb orb-3"></div>
+  <div class="bg">
+    <div class="orb orb-1"></div>
+    <div class="orb orb-2"></div>
+    <div class="orb orb-3"></div>
+    <div class="grain"></div>
+  </div>
 
-  <main class="app">
-    <header class="topbar">
-      <div class="brand">
-        <div class="logo">₿</div>
-        <div class="titles">
-          <div class="name">Finny</div>
-          <div class="sub">доходы • расходы • баланс</div>
+  <header class="topbar glass">
+    <div class="topbar__left">
+      <div class="appmark">
+        <div class="appmark__logo" aria-hidden="true"></div>
+        <div class="appmark__text">
+          <div class="title">Glass Budget</div>
+          <div class="subtitle" id="subtitle">доходы · расходы · баланс</div>
         </div>
       </div>
+    </div>
 
-      <button class="icon-btn" id="btnSettings" aria-label="Настройки">
-        <svg viewBox="0 0 24 24" class="icon"><path d="M19.14 12.94c.04-.31.06-.63.06-.94s-.02-.63-.06-.94l2.03-1.58a.5.5 0 0 0 .12-.64l-1.92-3.32a.5.5 0 0 0-.6-.22l-2.39.96a7.3 7.3 0 0 0-1.63-.94l-.36-2.54A.5.5 0 0 0 13.9 1h-3.8a.5.5 0 0 0-.49.42l-.36 2.54c-.58.23-1.12.54-1.63.94l-2.39-.96a.5.5 0 0 0-.6.22L2.7 7.48a.5.5 0 0 0 .12.64l2.03 1.58c-.04.31-.06.63-.06.94s.02.63.06.94L2.82 14.52a.5.5 0 0 0-.12.64l1.92 3.32c.13.22.39.31.6.22l2.39-.96c.5.4 1.05.71 1.63.94l.36 2.54c.04.24.25.42.49.42h3.8c.24 0 .45-.18.49-.42l.36-2.54c.58-.23 1.12-.54 1.63-.94l2.39.96c.22.09.47 0 .6-.22l1.92-3.32a.5.5 0 0 0-.12-.64l-2.03-1.58ZM12 15.5A3.5 3.5 0 1 1 12 8a3.5 3.5 0 0 1 0 7.5Z"/></svg>
+    <div class="topbar__right">
+      <button class="iconbtn" id="btnTheme" title="Переключить тему" aria-label="Тема">
+        <span class="icon">◐</span>
       </button>
-    </header>
+      <button class="iconbtn" id="btnExport" title="Экспорт" aria-label="Экспорт">
+        <span class="icon">⤓</span>
+      </button>
+      <label class="iconbtn filelike" title="Импорт" aria-label="Импорт">
+        <input id="fileImport" type="file" accept="application/json" hidden />
+        <span class="icon">⤒</span>
+      </label>
+    </div>
+  </header>
 
+  <main class="wrap">
     <section class="hero">
-      <div class="balance-card">
-        <div class="balance-row">
-          <div class="k">Баланс</div>
-          <div class="v" id="balanceValue">0 ₽</div>
-        </div>
-
-        <div class="split">
-          <div class="pill income">
-            <div class="k">Доход</div>
-            <div class="v" id="incomeValue">0 ₽</div>
+      <div class="stats grid">
+        <article class="card glass stat">
+          <div class="stat__top">
+            <div class="badge badge--neutral">Баланс</div>
+            <div class="spark" aria-hidden="true"></div>
           </div>
-          <div class="pill expense">
-            <div class="k">Расход</div>
-            <div class="v" id="expenseValue">0 ₽</div>
-          </div>
-        </div>
+          <div class="stat__value" id="balanceValue">0 ₽</div>
+          <div class="stat__hint" id="balanceHint">сегодня</div>
+        </article>
 
-        <div class="hint" id="tgHint">Открой в Telegram, чтобы был нативный вид ✨</div>
+        <article class="card glass stat">
+          <div class="stat__top">
+            <div class="badge badge--plus">Доход</div>
+            <div class="spark spark--plus" aria-hidden="true"></div>
+          </div>
+          <div class="stat__value plus" id="incomeValue">0 ₽</div>
+          <div class="stat__hint">за выбранный период</div>
+        </article>
+
+        <article class="card glass stat">
+          <div class="stat__top">
+            <div class="badge badge--minus">Расход</div>
+            <div class="spark spark--minus" aria-hidden="true"></div>
+          </div>
+          <div class="stat__value minus" id="expenseValue">0 ₽</div>
+          <div class="stat__hint">за выбранный период</div>
+        </article>
       </div>
 
-      <div class="quick">
-        <button class="primary" id="btnAdd"><span>＋</span> Добавить</button>
+      <div class="card glass chart">
+        <div class="chart__head">
+          <div>
+            <div class="h2">Динамика</div>
+            <div class="muted" id="rangeLabel">последние 7 дней</div>
+          </div>
 
-        <div class="segmented" role="tablist" aria-label="Фильтр">
-          <button class="seg-btn active" data-filter="all">Все</button>
-          <button class="seg-btn" data-filter="income">Доход</button>
-          <button class="seg-btn" data-filter="expense">Расход</button>
+          <div class="seg" role="tablist" aria-label="Период">
+            <button class="seg__btn is-active" data-range="7" role="tab">7д</button>
+            <button class="seg__btn" data-range="30" role="tab">30д</button>
+            <button class="seg__btn" data-range="all" role="tab">всё</button>
+          </div>
         </div>
-      </div>
 
-      <div class="search">
-        <input id="searchInput" type="search" placeholder="Поиск по заметке или категории…" />
+        <div class="chart__body">
+          <canvas id="miniChart" height="120"></canvas>
+        </div>
+
+        <div class="chart__foot">
+          <div class="pill">
+            <span class="dot dot--plus"></span>
+            Доход
+          </div>
+          <div class="pill">
+            <span class="dot dot--minus"></span>
+            Расход
+          </div>
+          <div class="pill">
+            <span class="dot dot--neutral"></span>
+            Баланс
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="list">
-      <div class="list-head">
-        <div class="title">Операции</div>
-        <div class="actions">
-          <button class="ghost" id="btnExport">Экспорт</button>
-          <label class="ghost file">
-            Импорт
-            <input type="file" id="importFile" accept="application/json" hidden />
-          </label>
-          <button class="danger" id="btnClear">Очистить</button>
-        </div>
-      </div>
-
-      <div id="items" class="items"></div>
-
-      <div class="empty" id="emptyState">
-        <div class="spark">✦</div>
-        <div class="t">Пока пусто</div>
-        <div class="s">Добавь первую операцию — и увидишь статистику.</div>
-      </div>
-    </section>
-
-    <!-- ===== ADD / EDIT OVERLAY ===== -->
-    <div class="overlay" id="overlayAdd" hidden>
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Добавить операцию">
-        <div class="sheet-top">
-          <div class="sheet-title" id="sheetTitle">Новая операция</div>
-          <button class="icon-btn" id="btnCloseAdd" aria-label="Закрыть">
-            <svg viewBox="0 0 24 24" class="icon"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"/></svg>
-          </button>
+    <section class="panel grid2">
+      <div class="card glass formcard">
+        <div class="formhead">
+          <div class="h2">Добавить операцию</div>
+          <div class="muted">быстро · красиво · без лишнего</div>
         </div>
 
-        <div class="form">
+        <div class="toggle">
+          <button class="toggle__btn is-active" data-type="expense">Расход</button>
+          <button class="toggle__btn" data-type="income">Доход</button>
+        </div>
+
+        <form id="txForm" class="form">
           <div class="row">
             <label class="field">
-              <span>Тип</span>
-              <div class="type-toggle">
-                <button class="type-btn active" data-type="expense">Расход</button>
-                <button class="type-btn" data-type="income">Доход</button>
+              <span class="field__label">Сумма</span>
+              <div class="field__wrap">
+                <span class="field__icon">₽</span>
+                <input id="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" required />
+              </div>
+            </label>
+
+            <label class="field">
+              <span class="field__label">Дата</span>
+              <div class="field__wrap">
+                <span class="field__icon">⌁</span>
+                <input id="date" type="date" required />
               </div>
             </label>
           </div>
 
-          <div class="row two">
+          <div class="row">
             <label class="field">
-              <span>Сумма</span>
-              <input id="amountInput" inputmode="decimal" placeholder="например 1990" />
+              <span class="field__label">Категория</span>
+              <div class="field__wrap">
+                <span class="field__icon">◌</span>
+                <select id="category"></select>
+              </div>
             </label>
+
             <label class="field">
-              <span>Валюта</span>
-              <select id="currencySelect">
-                <option value="RUB">₽ RUB</option>
-                <option value="EUR">€ EUR</option>
-                <option value="USD">$ USD</option>
-              </select>
+              <span class="field__label">Заметка</span>
+              <div class="field__wrap">
+                <span class="field__icon">✎</span>
+                <input id="note" type="text" maxlength="60" placeholder="например: кофе, зарплата…" />
+              </div>
             </label>
           </div>
 
-          <div class="row two">
-            <label class="field">
-              <span>Категория</span>
-              <select id="categorySelect">
-                <option>Еда</option>
-                <option>Транспорт</option>
-                <option>Дом</option>
-                <option>Подписки</option>
-                <option>Развлечения</option>
-                <option>Здоровье</option>
-                <option>Подарки</option>
-                <option>Другое</option>
-              </select>
-            </label>
-            <label class="field">
-              <span>Дата</span>
-              <input id="dateInput" type="date" />
-            </label>
+          <button class="btn primary" type="submit">
+            <span class="btn__shine" aria-hidden="true"></span>
+            Добавить
+          </button>
+
+          <div class="formhint muted">
+            Подсказка: свайп вправо по записи — удалить (на телефоне проще).
+          </div>
+        </form>
+      </div>
+
+      <div class="card glass listcard">
+        <div class="listhead">
+          <div>
+            <div class="h2">Операции</div>
+            <div class="muted" id="listHint">пока пусто</div>
           </div>
 
-          <label class="field">
-            <span>Заметка</span>
-            <input id="noteInput" placeholder="например: кофе + круассан" />
-          </label>
+          <div class="tools">
+            <label class="search">
+              <span class="search__icon">⌕</span>
+              <input id="search" type="text" placeholder="поиск…" />
+            </label>
 
-          <div class="row end">
-            <button class="secondary" id="btnCancelAdd">Отмена</button>
-            <button class="primary" id="btnSave">Сохранить</button>
+            <select class="smallselect" id="filterType" title="Фильтр типа">
+              <option value="all">Все</option>
+              <option value="income">Доход</option>
+              <option value="expense">Расход</option>
+            </select>
           </div>
         </div>
-      </div>
-    </div>
 
-    <!-- ===== SETTINGS OVERLAY ===== -->
-    <div class="overlay" id="overlaySettings" hidden>
-      <div class="sheet" role="dialog" aria-modal="true" aria-label="Настройки">
-        <div class="sheet-top">
-          <div class="sheet-title">Настройки</div>
-          <button class="icon-btn" id="btnCloseSettings" aria-label="Закрыть">
-            <svg viewBox="0 0 24 24" class="icon"><path d="M18.3 5.71 12 12l6.3 6.29-1.41 1.42L10.59 13.4 4.29 19.71 2.88 18.3 9.17 12 2.88 5.71 4.29 4.29l6.3 6.3 6.29-6.3z"/></svg>
+        <div class="chips" id="chips"></div>
+
+        <div class="list" id="txList" aria-live="polite"></div>
+
+        <div class="listfoot">
+          <button class="btn ghost" id="btnClear">
+            Очистить всё
+          </button>
+          <button class="btn ghost" id="btnDemo">
+            Демо-данные
           </button>
         </div>
-
-        <div class="form">
-          <label class="field">
-            <span>Тема</span>
-            <div class="type-toggle">
-              <button class="type-btn active" data-theme="dark">Тёмная</button>
-              <button class="type-btn" data-theme="light">Светлая</button>
-            </div>
-          </label>
-
-          <!-- ВАЖНО: вместо <select> — кнопки (так надёжнее в Telegram) -->
-          <label class="field">
-            <span>Формат даты</span>
-            <div class="type-toggle">
-              <button class="type-btn active" data-datefmt="ru">ДД.ММ.ГГГГ</button>
-              <button class="type-btn" data-datefmt="iso">ГГГГ-ММ-ДД</button>
-            </div>
-          </label>
-
-          <div class="row end">
-            <button class="primary" id="btnSettingsDone">Готово</button>
-          </div>
-
-          <div class="footer-note">
-            Данные хранятся только на твоём устройстве (localStorage).
-          </div>
-        </div>
       </div>
-    </div>
+    </section>
 
+    <footer class="footer muted">
+      Telegram Mini App · данные хранятся локально на устройстве
+    </footer>
   </main>
+
+  <div class="toast" id="toast" role="status" aria-live="polite"></div>
 
   <script src="./app.js"></script>
 </body>
